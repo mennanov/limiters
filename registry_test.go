@@ -1,0 +1,64 @@
+package limiters_test
+
+import (
+	"context"
+	"fmt"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/mennanov/limiters"
+)
+
+type testingLimiter struct{}
+
+func newTestingLimiter() *testingLimiter {
+	return &testingLimiter{}
+}
+
+func (l *testingLimiter) Limit(context.Context) (time.Duration, error) {
+	return 0, nil
+}
+
+func TestRegistry_GetOrCreate(t *testing.T) {
+	registry := limiters.NewRegistry()
+	called := false
+	clock := newFakeClock()
+	limiter := newTestingLimiter()
+	l := registry.GetOrCreate("key", func() limiters.Limiter {
+		called = true
+		return limiter
+	}, time.Second, clock.Now())
+	assert.Equal(t, limiter, l)
+	// Verify that the closure was called to create a limiter.
+	assert.True(t, called)
+	called = false
+	l = registry.GetOrCreate("key", func() limiters.Limiter {
+		called = true
+		return newTestingLimiter()
+	}, time.Second, clock.Now())
+	assert.Equal(t, limiter, l)
+	// Verify that the closure was NOT called to create a limiter as it already exists.
+	assert.False(t, called)
+}
+
+func TestRegistry_DeleteExpired(t *testing.T) {
+	registry := limiters.NewRegistry()
+	clock := newFakeClock()
+	// Add limiters to the registry.
+	for i := 1; i <= 10; i++ {
+		registry.GetOrCreate(fmt.Sprintf("key%d", i), func() limiters.Limiter {
+			return newTestingLimiter()
+		}, time.Second*time.Duration(i), clock.Now())
+	}
+	clock.Sleep(time.Second * 3)
+	assert.Equal(t, 3, registry.DeleteExpired(clock.Now()))
+	for i := 1; i <= 10; i++ {
+		if i <= 3 {
+			assert.False(t, registry.Exists(fmt.Sprintf("key%d", i)))
+		} else {
+			assert.True(t, registry.Exists(fmt.Sprintf("key%d", i)))
+		}
+	}
+}
