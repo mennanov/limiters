@@ -49,7 +49,9 @@ func NewTokenBucket(locker Locker, tokenBucketStateBackend TokenBucketStateBacke
 }
 
 // Take takes tokens from the bucket.
+//
 // It returns a zero duration and a nil error if the bucket has sufficient amount of tokens.
+//
 // It returns ErrLimitExhausted if the amount of available tokens is less than requested. In this case the returned
 // duration is the amount of time to wait to retry the request.
 func (t *TokenBucket) Take(ctx context.Context, tokens int64) (time.Duration, error) {
@@ -97,6 +99,12 @@ func (t *TokenBucket) Limit(ctx context.Context) (time.Duration, error) {
 }
 
 // TokenBucketInMemory is an in-memory implementation of TokenBucketStateBackend.
+//
+// The state is not shared nor persisted so it won't survive restarts or failures.
+// Due to the local nature of the state the rate at which some endpoints are accessed can't be reliably predicted or
+// limited.
+//
+// Although it can be used as a global rate limiter with a round-robin load-balancer.
 type TokenBucketInMemory struct {
 	state TokenBucketState
 }
@@ -127,10 +135,19 @@ const (
 )
 
 // TokenBucketEtcd is an etcd implementation of a TokenBucketStateBackend.
-// Since etcd is a persisted key-value datastore this implementation should only be used for infrequently accessed API
-// endpoints where the reliability and consistency of the accesses is more important than a throughput of a rate
-// limiter. Aggressive compaction and defragmentation has to be enabled in etcd to prevent the size of the storage
-// to grow indefinitely: every change of the state of the bucket will create a new revision in etcd.
+//
+// See https://github.com/etcd-io/etcd/blob/master/Documentation/learning/data_model.md
+//
+// etcd is designed to reliably store infrequently updated data, this it should only be used for infrequently accessed
+// API endpoints where the reliability and consistency of the accesses is more important than a throughput of a rate
+// limiter.
+//
+// Aggressive compaction and defragmentation has to be enabled in etcd to prevent the size of the storage
+// to grow indefinitely: every change of the state of the bucket (every access) will create a new revision in etcd.
+//
+// It probably makes it impractical for the high load cases, but can be used to reliably and precisely rate limit an
+// access to the business critical endpoints where each access must be reliably logged (e.g. change password, withdraw
+// funds).
 type TokenBucketEtcd struct {
 	// Initial state of the bucket.
 	state TokenBucketState
@@ -249,7 +266,8 @@ func (t *TokenBucketEtcd) createLease(ctx context.Context) error {
 // save saves the state to etcd using the existing lease and the fencing token.
 func (t *TokenBucketEtcd) save(ctx context.Context, fencingToken int64) error {
 	// Put the keys only if the fencing token does not exist or its value is <= the given value.
-	// TODO: figure out how to do that in 1 RPC instead of 3 (worst case). OR logic is needed in the IF stmt.
+	// TODO: figure out how to do that in 1 RPC instead of 3 (worst case): OR logic is needed in the IF stmt.
+	//  See https://github.com/etcd-io/etcd/issues/11089
 	for _, cs := range []clientv3.Cmp{
 		clientv3.Compare(clientv3.Value(etcdKey(t.prefix, etcdKeyTBFencingToken)), "=", fmt.Sprintf("%d", fencingToken)),
 		clientv3.Compare(clientv3.CreateRevision(etcdKey(t.prefix, etcdKeyTBFencingToken)), "=", 0),
@@ -310,6 +328,13 @@ func redisKey(prefix, key string) string {
 }
 
 // TokenBucketRedis is a Redis implementation of a TokenBucketStateBackend.
+//
+// Redis is an in-memory key-value data storage which also supports persistence.
+// It is a better choice for high load cases than etcd as it does not keep old values of the keys thus does not need
+// the compaction/defragmentation.
+//
+// Although depending on a persistence and a cluster configuration some data might be lost in case of a failure
+// resulting in an under-limiting the accesses to the service.
 type TokenBucketRedis struct {
 	// Initial state of the bucket.
 	state        TokenBucketState

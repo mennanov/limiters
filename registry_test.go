@@ -53,9 +53,14 @@ func TestRegistry_DeleteExpired(t *testing.T) {
 		}, time.Second*time.Duration(i), clock.Now())
 	}
 	clock.Sleep(time.Second * 3)
-	assert.Equal(t, 3, registry.DeleteExpired(clock.Now()))
+	// "touch" the "key3" limiter that is about to be expired so that its expiration time is extended for 1s.
+	registry.GetOrCreate("key3", func() limiters.Limiter {
+		return newTestingLimiter()
+	}, time.Second, clock.Now())
+
+	assert.Equal(t, 2, registry.DeleteExpired(clock.Now()))
 	for i := 1; i <= 10; i++ {
-		if i <= 3 {
+		if i <= 2 {
 			assert.False(t, registry.Exists(fmt.Sprintf("key%d", i)))
 		} else {
 			assert.True(t, registry.Exists(fmt.Sprintf("key%d", i)))

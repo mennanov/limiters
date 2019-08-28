@@ -61,8 +61,21 @@ func Example() {
 	})
 	defer redisClient.Close()
 	logger := limiters.NewStdLogger()
+	// Registry is needed to keep track of previously created limiters. It can remove the expired limiters to free up
+	// memory.
 	registry := limiters.NewRegistry()
+	// The rate is used to define the token bucket refill rate and also the TTL for the limiters (both in Redis and in
+	// the registry).
+	rate := time.Second * 3
 	clock := limiters.NewSystemClock()
+	go func() {
+		// Garbage collect the old limiters to prevent memory leaks.
+		for {
+			<-time.After(rate)
+			registry.DeleteExpired(clock.Now())
+		}
+	}()
+
 	// Add a unary interceptor middleware to rate limit requests.
 	s := grpc.NewServer(grpc.UnaryInterceptor(
 		func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
@@ -74,7 +87,7 @@ func Example() {
 			} else {
 				ip = p.Addr.String()
 			}
-			rate := time.Second * 3
+
 			// Create an IP address based rate limiter.
 			limiter := registry.GetOrCreate(ip, func() limiters.Limiter {
 				return limiters.NewTokenBucket(

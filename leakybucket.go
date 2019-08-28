@@ -362,7 +362,7 @@ func redisResponseOK(response interface{}, count int) bool {
 }
 
 // SetState updates the state in Redis.
-// The provided fencing token is checked on Redis side before saving the keys.
+// The provided fencing token is checked on the Redis side before saving the keys.
 func (t *LeakyBucketRedis) SetState(ctx context.Context, state LeakyBucketState, fencingToken int64) error {
 	t.state = state
 	var result interface{}

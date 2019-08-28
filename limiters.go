@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// ErrLimitExhausted means the number of requests overflows the capacity of a Limiter.
+// ErrLimitExhausted is returned by the Limiter in case the number of requests overflows the capacity of a Limiter.
 var ErrLimitExhausted = errors.New("requests limit exhausted")
 
 // Limiter is the interface that wraps the Limit method.
@@ -38,11 +38,10 @@ func (l *StdLogger) Log(v ...interface{}) {
 }
 
 // Clock encapsulates a system Clock.
+// Used
 type Clock interface {
 	// Now returns the current system time.
 	Now() time.Time
-	// Sleep moves the clock forward for the given duration.
-	Sleep(time.Duration)
 }
 
 // SystemClock implements the Clock interface by using the real system clock.

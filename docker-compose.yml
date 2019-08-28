@@ -1,0 +1,16 @@
+version: "3"
+
+services:
+  etcd:
+    image: bitnami/etcd
+    environment:
+      ALLOW_NONE_AUTHENTICATION: "yes"
+    ports:
+      - "2379:2379"
+
+  redis:
+    image: bitnami/redis
+    environment:
+      ALLOW_EMPTY_PASSWORD: "yes"
+    ports:
+      - "6379:6379"
