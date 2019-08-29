@@ -2,7 +2,7 @@ package limiters
 
 import (
 	"context"
-	"time"
+	"sync"
 
 	"github.com/coreos/etcd/clientv3"
 	"github.com/coreos/etcd/clientv3/concurrency"
@@ -20,17 +20,24 @@ type Locker interface {
 
 // LockerNoop is a no-op implementation of the Locker interface.
 // It should only be used with the in-memory backends as they don't need distributed locks.
-type LockerNoop struct{}
+type LockerNoop struct {
+	// mu guards the c field below.
+	mu sync.Mutex
+	c  int64
+}
 
 // NewLockerNoop creates a new LockerNoop.
 func NewLockerNoop() *LockerNoop {
 	return &LockerNoop{}
 }
 
-// Lock returns a fencing token as a Unix timestamp in nanoseconds.
+// Lock returns an incrementing fencing token.
 // It does not actually lock anything.
 func (n LockerNoop) Lock(ctx context.Context) (int64, error) {
-	return time.Now().UnixNano(), ctx.Err()
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.c++
+	return n.c, ctx.Err()
 }
 
 // Unlock does nothing.

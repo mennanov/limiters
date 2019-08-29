@@ -102,17 +102,6 @@
   version = "v1.0.0"
 
 [[projects]]
-  branch = "master"
-  digest = "1:0387a24b0249783b80492a1f77a29bc5a3f2e389e3295002b2a579620be813fb"
-  name = "github.com/mennanov/limiters"
-  packages = [
-    ".",
-    "examples/helloworld",
-  ]
-  pruneopts = "UT"
-  revision = "76c07240d63f7b8e1ef2cc1d82a44c6ac2a0613c"
-
-[[projects]]
   digest = "1:cf31692c14422fa27c83a05292eb5cbe0fb2775972e8f1f8446a71549bd8980b"
   name = "github.com/pkg/errors"
   packages = ["."]
@@ -290,8 +279,6 @@
     "github.com/go-redis/redis",
     "github.com/golang/protobuf/proto",
     "github.com/google/uuid",
-    "github.com/mennanov/limiters",
-    "github.com/mennanov/limiters/examples/helloworld",
     "github.com/pkg/errors",
     "github.com/stretchr/testify/assert",
     "github.com/stretchr/testify/suite",

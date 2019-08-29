@@ -113,15 +113,15 @@ func (s *LimitersTestSuite) TestTokenBucketRealClock() {
 					clock.Sleep(testCase.requestRate)
 				}
 				wg.Add(1)
-				go func() {
+				go func(bucket *l.TokenBucket) {
 					defer wg.Done()
 					if _, err := bucket.Limit(context.TODO()); err != nil {
-						s.Equal(l.ErrLimitExhausted, err)
+						s.Equal(l.ErrLimitExhausted, err, "%T %v", bucket, bucket)
 						mu.Lock()
 						miss++
 						mu.Unlock()
 					}
-				}()
+				}(bucket)
 			}
 			wg.Wait()
 			s.InDelta(testCase.missExpected, miss, testCase.delta, testCase)
@@ -177,22 +177,22 @@ func (s *LimitersTestSuite) TestTokenBucketContextCancelled() {
 	clock := newFakeClock()
 	for _, bucket := range s.tokenBuckets(1, 1, clock) {
 		done1 := make(chan struct{})
-		go func() {
+		go func(bucket *l.TokenBucket) {
 			defer close(done1)
 			// The context is expired shortly after it is created.
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
 			_, err := bucket.Limit(ctx)
 			s.Error(err, bucket)
-		}()
+		}(bucket)
 		done2 := make(chan struct{})
-		go func() {
+		go func(bucket *l.TokenBucket) {
 			defer close(done2)
 			<-done1
 			ctx := context.Background()
 			_, err := bucket.Limit(ctx)
 			s.NoError(err)
-		}()
+		}(bucket)
 		// Verify that the second go routine succeeded calling the Limit() method.
 		<-done2
 	}

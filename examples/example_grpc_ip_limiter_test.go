@@ -21,31 +21,13 @@ import (
 	pb "github.com/mennanov/limiters/examples/helloworld"
 )
 
-const (
-	port = ":50051"
-)
-
-// server is used to implement helloworld.GreeterServer.
-type server struct{}
-
-// SayHello implements helloworld.GreeterServer.
-func (s *server) SayHello(_ context.Context, in *pb.HelloRequest) (*pb.HelloReply, error) {
-	return &pb.HelloReply{Message: "Hello " + in.GetName()}, nil
-}
-
-// SayGoodbye implements helloworld.GreeterServer.
-func (s *server) SayGoodbye(_ context.Context, in *pb.GoodbyeRequest) (*pb.GoodbyeReply, error) {
-	return &pb.GoodbyeReply{Message: "Hello " + in.GetName()}, nil
-}
-
-var _ pb.GreeterServer = new(server)
-
-func Example() {
+func Example_ipGRPCLimiter() {
 	// Set up a gRPC server.
 	lis, err := net.Listen("tcp", port)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
+	defer lis.Close()
 	// Connect to etcd.
 	etcdClient, err := clientv3.New(clientv3.Config{
 		Endpoints:   strings.Split(os.Getenv("ETCD_ENDPOINTS"), ","),
@@ -91,10 +73,10 @@ func Example() {
 			// Create an IP address based rate limiter.
 			limiter := registry.GetOrCreate(ip, func() limiters.Limiter {
 				return limiters.NewTokenBucket(
-					limiters.NewLockerEtcd(etcdClient, fmt.Sprintf("/lock/%s", ip), logger),
+					limiters.NewLockerEtcd(etcdClient, fmt.Sprintf("/lock/ip/%s", ip), logger),
 					limiters.NewTokenBucketRedis(
 						redisClient,
-						fmt.Sprintf("/ratelimiter/%s", ip),
+						fmt.Sprintf("/ratelimiter/ip/%s", ip),
 						// Allowance: 1 request per 3 seconds with the burst of size 2.
 						limiters.TokenBucketState{
 							RefillRate: rate,
@@ -103,7 +85,7 @@ func Example() {
 						},
 						rate),
 					clock, logger)
-			}, rate, time.Now())
+			}, rate, clock.Now())
 			w, err := limiter.Limit(ctx)
 			if err == limiters.ErrLimitExhausted {
 				return nil, status.Errorf(codes.ResourceExhausted, "try again later in %s", w)
@@ -122,6 +104,7 @@ func Example() {
 			log.Fatalf("failed to serve: %v", err)
 		}
 	}()
+	defer s.GracefulStop()
 
 	// Set up a client connection to the server.
 	conn, err := grpc.Dial(fmt.Sprintf("localhost%s", port), grpc.WithInsecure())

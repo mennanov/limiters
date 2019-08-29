@@ -143,9 +143,8 @@ const (
 //
 // See https://github.com/etcd-io/etcd/blob/master/Documentation/learning/data_model.md
 //
-// etcd is designed to reliably store infrequently updated data, this it should only be used for infrequently accessed
-// API endpoints where the reliability and consistency of the accesses is more important than a throughput of a rate
-// limiter.
+// etcd is designed to reliably store infrequently updated data, thus it should only be used for the API endpoints which
+// are accessed less frequently than it can be processed by the rate limiter.
 //
 // Aggressive compaction and defragmentation has to be enabled in etcd to prevent the size of the storage
 // to grow indefinitely: every change of the state of the bucket (every access) will create a new revision in etcd.
