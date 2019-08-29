@@ -38,14 +38,16 @@ func (s *LimitersTestSuite) leakyBucketBackends(capacity int64, rate time.Durati
 	}
 }
 
-func (s *LimitersTestSuite) TestLeakyRealClock() {
+func (s *LimitersTestSuite) TestLeakyBucketRealClock() {
 	capacity := int64(10)
 	rate := time.Millisecond * 10
 	clock := l.NewSystemClock()
-	for _, requestRate := range []time.Duration{rate * 2, rate, rate / 2, rate / 3, rate / 4, 0} {
+	for _, requestRate := range []time.Duration{rate / 2} {
 		for _, bucket := range s.leakyBuckets(capacity, rate, clock) {
-			start := clock.Now()
+			//start := clock.Now()
 			wg := sync.WaitGroup{}
+			mu := sync.Mutex{}
+			var totalWait time.Duration
 			for i := int64(0); i < capacity; i++ {
 				// No pause for the first request.
 				if i > 0 {
@@ -57,24 +59,28 @@ func (s *LimitersTestSuite) TestLeakyRealClock() {
 					wait, err := bucket.Limit(context.TODO())
 					s.Require().NoError(err)
 					if wait > 0 {
+						mu.Lock()
+						totalWait += wait
+						mu.Unlock()
 						clock.Sleep(wait)
 					}
 				}(bucket)
 			}
 			wg.Wait()
-			interval := rate
-			if requestRate > rate {
-				interval = requestRate
+			expectedWait := time.Duration(0)
+			if rate > requestRate {
+				expectedWait = time.Duration(float64(rate-requestRate) * float64(capacity-1) / 2 * float64(capacity))
 			}
-			// Allow 35ms lag for each request.
+
+			// Allow 5ms lag for each request.
 			// TODO: figure out if this is enough for slow PCs and possibly avoid hard-coding it.
-			delta := float64(time.Duration(capacity) * time.Millisecond * 35)
-			s.InDelta(interval*time.Duration(capacity-1), clock.Now().Sub(start), delta, "request rate: %d, bucket: %v", requestRate, bucket)
+			delta := float64(time.Duration(capacity) * time.Millisecond * 20)
+			s.InDelta(expectedWait, totalWait, delta, "request rate: %d, bucket: %v", requestRate, bucket)
 		}
 	}
 }
 
-func (s *LimitersTestSuite) TestLeakyFakeClock() {
+func (s *LimitersTestSuite) TestLeakyBucketFakeClock() {
 	capacity := int64(10)
 	rate := time.Millisecond * 100
 	clock := newFakeClock()
@@ -100,7 +106,7 @@ func (s *LimitersTestSuite) TestLeakyFakeClock() {
 	}
 }
 
-func (s *LimitersTestSuite) TestLeakyOverflow() {
+func (s *LimitersTestSuite) TestLeakyBucketOverflow() {
 	rate := time.Second
 	capacity := int64(2)
 	clock := newFakeClock()
@@ -131,7 +137,7 @@ func (s *LimitersTestSuite) TestLeakyOverflow() {
 	}
 }
 
-func (s *LimitersTestSuite) TestLeakyContextCancelled() {
+func (s *LimitersTestSuite) TestLeakyBucketContextCancelled() {
 	clock := newFakeClock()
 	for _, bucket := range s.leakyBuckets(1, 1, clock) {
 		done1 := make(chan struct{})
