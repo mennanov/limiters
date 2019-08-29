@@ -70,26 +70,32 @@ var tokenBucketUniformTestCases = []struct {
 
 // tokenBuckets returns all the possible TokenBucket combinations.
 func (s *LimitersTestSuite) tokenBuckets(capacity int64, refillRate time.Duration, clock l.Clock) []*l.TokenBucket {
-	return []*l.TokenBucket{
-		l.NewTokenBucket(l.NewLockerNoop(), l.NewTokenBucketInMemory(l.TokenBucketState{
+	var buckets []*l.TokenBucket
+	for _, locker := range s.lockers() {
+		for _, backend := range s.tokenBucketBackends(capacity, refillRate) {
+			buckets = append(buckets, l.NewTokenBucket(locker, backend, clock, s.logger))
+		}
+	}
+	return buckets
+}
+
+func (s *LimitersTestSuite) tokenBucketBackends(capacity int64, refillRate time.Duration) []l.TokenBucketStateBackend {
+	return []l.TokenBucketStateBackend{
+		l.NewTokenBucketInMemory(l.TokenBucketState{
 			RefillRate: refillRate,
 			Capacity:   capacity,
 			Available:  capacity,
-		}), clock, s.logger),
-		l.NewTokenBucket(
-			l.NewLockerEtcd(s.etcdClient, uuid.New().String(), s.logger),
-			l.NewTokenBucketEtcd(s.etcdClient, uuid.New().String(), l.TokenBucketState{
-				RefillRate: refillRate,
-				Capacity:   capacity,
-				Available:  capacity,
-			}, time.Second), clock, s.logger),
-		l.NewTokenBucket(
-			l.NewLockerEtcd(s.etcdClient, uuid.New().String(), s.logger),
-			l.NewTokenBucketRedis(s.redisClient, uuid.New().String(), l.TokenBucketState{
-				RefillRate: refillRate,
-				Capacity:   capacity,
-				Available:  capacity,
-			}, time.Second), clock, s.logger),
+		}),
+		l.NewTokenBucketEtcd(s.etcdClient, uuid.New().String(), l.TokenBucketState{
+			RefillRate: refillRate,
+			Capacity:   capacity,
+			Available:  capacity,
+		}, time.Second),
+		l.NewTokenBucketRedis(s.redisClient, uuid.New().String(), l.TokenBucketState{
+			RefillRate: refillRate,
+			Capacity:   capacity,
+			Available:  capacity,
+		}, time.Second),
 	}
 }
 
@@ -189,5 +195,22 @@ func (s *LimitersTestSuite) TestTokenBucketContextCancelled() {
 		}()
 		// Verify that the second go routine succeeded calling the Limit() method.
 		<-done2
+	}
+}
+
+func (s *LimitersTestSuite) TestTokenBucketFencingToken() {
+	state := l.TokenBucketState{
+		RefillRate: time.Second,
+		Capacity:   2,
+		Last:       time.Now().UnixNano(),
+		Available:  1,
+	}
+	for _, backend := range s.tokenBucketBackends(1, time.Second) {
+		s.Require().NoError(backend.SetState(context.TODO(), state, 2))
+		// Set state with an expired fencing token.
+		s.Require().Error(backend.SetState(context.TODO(), l.TokenBucketState{}, 1), "%T", backend)
+		st, err := backend.State(context.TODO())
+		s.Require().NoError(err)
+		s.Equal(state, st)
 	}
 }

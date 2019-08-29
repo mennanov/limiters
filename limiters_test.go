@@ -9,6 +9,7 @@ import (
 
 	"github.com/coreos/etcd/clientv3"
 	"github.com/go-redis/redis"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/suite"
 
 	l "github.com/mennanov/limiters"
@@ -73,4 +74,11 @@ func (s *LimitersTestSuite) TearDownSuite() {
 
 func TestBucketTestSuite(t *testing.T) {
 	suite.Run(t, new(LimitersTestSuite))
+}
+
+func (s *LimitersTestSuite) lockers() []l.Locker {
+	return []l.Locker{
+		l.NewLockerNoop(),
+		l.NewLockerEtcd(s.etcdClient, uuid.New().String(), s.logger),
+	}
 }

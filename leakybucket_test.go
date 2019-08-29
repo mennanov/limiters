@@ -12,23 +12,29 @@ import (
 
 // leakyBuckets returns all the possible leakyBuckets combinations.
 func (s *LimitersTestSuite) leakyBuckets(capacity int64, rate time.Duration, clock l.Clock) []*l.LeakyBucket {
-	return []*l.LeakyBucket{
-		l.NewLeakyBucket(l.NewLockerNoop(), l.NewLeakyBucketInMemory(l.LeakyBucketState{
+	var buckets []*l.LeakyBucket
+	for _, locker := range s.lockers() {
+		for _, backend := range s.leakyBucketBackends(capacity, rate) {
+			buckets = append(buckets, l.NewLeakyBucket(locker, backend, clock, s.logger))
+		}
+	}
+	return buckets
+}
+
+func (s *LimitersTestSuite) leakyBucketBackends(capacity int64, rate time.Duration) []l.LeakyBucketStateBackend {
+	return []l.LeakyBucketStateBackend{
+		l.NewLeakyBucketInMemory(l.LeakyBucketState{
 			Capacity: capacity,
 			Rate:     rate,
-		}), clock, s.logger),
-		l.NewLeakyBucket(
-			l.NewLockerEtcd(s.etcdClient, uuid.New().String(), s.logger),
-			l.NewLeakyBucketEtcd(s.etcdClient, uuid.New().String(), l.LeakyBucketState{
-				Capacity: capacity,
-				Rate:     rate,
-			}, time.Second), clock, s.logger),
-		l.NewLeakyBucket(
-			l.NewLockerEtcd(s.etcdClient, uuid.New().String(), s.logger),
-			l.NewLeakyBucketRedis(s.redisClient, uuid.New().String(), l.LeakyBucketState{
-				Capacity: capacity,
-				Rate:     rate,
-			}, time.Second), clock, s.logger),
+		}),
+		l.NewLeakyBucketEtcd(s.etcdClient, uuid.New().String(), l.LeakyBucketState{
+			Capacity: capacity,
+			Rate:     rate,
+		}, time.Second),
+		l.NewLeakyBucketRedis(s.redisClient, uuid.New().String(), l.LeakyBucketState{
+			Capacity: capacity,
+			Rate:     rate,
+		}, time.Second),
 	}
 }
 
@@ -150,3 +156,18 @@ func (s *LimitersTestSuite) TestLeakyContextCancelled() {
 	}
 }
 
+func (s *LimitersTestSuite) TestLeakyBucketFencingToken() {
+	state := l.LeakyBucketState{
+		Rate:     time.Second,
+		Capacity: 2,
+		Last:     time.Now().UnixNano(),
+	}
+	for _, backend := range s.leakyBucketBackends(1, time.Second) {
+		s.Require().NoError(backend.SetState(context.TODO(), state, 2))
+		// Set state with an expired fencing token.
+		s.Require().Error(backend.SetState(context.TODO(), l.LeakyBucketState{}, 1), "%T", backend)
+		st, err := backend.State(context.TODO())
+		s.Require().NoError(err)
+		s.Equal(state, st)
+	}
+}

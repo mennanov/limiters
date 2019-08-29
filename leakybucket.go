@@ -93,7 +93,8 @@ func (t *LeakyBucket) Limit(ctx context.Context) (time.Duration, error) {
 
 // LeakyBucketInMemory is an in-memory implementation of LeakyBucketStateBackend.
 type LeakyBucketInMemory struct {
-	state LeakyBucketState
+	state        LeakyBucketState
+	fencingToken int64
 }
 
 // NewLeakyBucketInMemory creates a new instance of LeakyBucketInMemory.
@@ -107,8 +108,12 @@ func (l *LeakyBucketInMemory) State(ctx context.Context) (LeakyBucketState, erro
 }
 
 // SetState sets the current state of the bucket.
-func (l *LeakyBucketInMemory) SetState(ctx context.Context, state LeakyBucketState, _ int64) error {
+func (l *LeakyBucketInMemory) SetState(ctx context.Context, state LeakyBucketState, fencingToken int64) error {
+	if fencingToken < l.fencingToken {
+		return ErrFencingTokenExpired
+	}
 	l.state = state
+	l.fencingToken = fencingToken
 	return ctx.Err()
 }
 
@@ -212,28 +217,24 @@ func (l *LeakyBucketEtcd) createLease(ctx context.Context) error {
 
 // save saves the state to etcd using the existing lease.
 func (l *LeakyBucketEtcd) save(ctx context.Context, fencingToken int64) error {
-	for _, cs := range []clientv3.Cmp{
-		clientv3.Compare(clientv3.Value(etcdKey(l.prefix, etcdKeyLBFencingToken)), "=", fmt.Sprintf("%d", fencingToken)),
-		clientv3.Compare(clientv3.CreateRevision(etcdKey(l.prefix, etcdKeyLBFencingToken)), "=", 0),
-		clientv3.Compare(clientv3.Value(etcdKey(l.prefix, etcdKeyLBFencingToken)), "<", fmt.Sprintf("%d", fencingToken)),
-	} {
-		r, err := l.cli.Txn(ctx).If(cs).Then(
-			clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBLast), fmt.Sprintf("%d", l.state.Last), clientv3.WithLease(l.leaseID)),
-			clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBLease), fmt.Sprintf("%d", l.leaseID), clientv3.WithLease(l.leaseID)),
-			clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBRate), fmt.Sprintf("%d", l.state.Rate), clientv3.WithLease(l.leaseID)),
-			clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBCapacity), fmt.Sprintf("%d", l.state.Capacity), clientv3.WithLease(l.leaseID)),
-			clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBFencingToken), fmt.Sprintf("%d", fencingToken), clientv3.WithLease(l.leaseID)),
-		).Commit()
-		if err != nil {
-			return errors.Wrap(err, "failed to commit a transaction to etcd")
-		}
-
-		if r.Succeeded {
-			return nil
-		}
+	r, err := l.cli.Txn(ctx).If(
+		clientv3.Compare(clientv3.CreateRevision(etcdKey(l.prefix, etcdKeyLBFencingToken)), "!=", 0),
+		clientv3.Compare(clientv3.Value(etcdKey(l.prefix, etcdKeyLBFencingToken)), ">", fmt.Sprintf("%d", fencingToken)),
+	).Else(
+		clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBLast), fmt.Sprintf("%d", l.state.Last), clientv3.WithLease(l.leaseID)),
+		clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBLease), fmt.Sprintf("%d", l.leaseID), clientv3.WithLease(l.leaseID)),
+		clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBRate), fmt.Sprintf("%d", l.state.Rate), clientv3.WithLease(l.leaseID)),
+		clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBCapacity), fmt.Sprintf("%d", l.state.Capacity), clientv3.WithLease(l.leaseID)),
+		clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBFencingToken), fmt.Sprintf("%d", fencingToken), clientv3.WithLease(l.leaseID)),
+	).Commit()
+	if err != nil {
+		return errors.Wrap(err, "failed to commit a transaction to etcd")
 	}
-	return errors.New("failed to save keys to etcd: fencing token expired")
 
+	if !r.Succeeded {
+		return nil
+	}
+	return ErrFencingTokenExpired
 }
 
 // SetState updates the state of the bucket in etcd.
@@ -344,21 +345,28 @@ func (t *LeakyBucketRedis) State(ctx context.Context) (LeakyBucketState, error) 
 	}, nil
 }
 
-// redisResponseOK checks that all responses from Redis are "OK".
-func redisResponseOK(response interface{}, count int) bool {
-	r, ok := response.([]string)
+// checkResponseFromRedis checks that all responses from Redis are "OK".
+func checkResponseFromRedis(response interface{}, count int) error {
+	if s, sok := response.(string); sok && s == "TOKEN_EXPIRED" {
+		return ErrFencingTokenExpired
+	}
+	r, ok := response.([]interface{})
 	if !ok {
-		return false
+		return errors.Errorf("unexpected response format from redis: %T %+v", response, response)
 	}
 	if len(r) != count {
-		return false
+		return errors.Errorf("got %d response items from redis, expected %d", len(r), count)
 	}
 	for _, w := range r {
-		if w != "OK" {
-			return false
+		m, ok := w.(string)
+		if !ok {
+			return errors.Errorf("unexpected response from redis: %+v", w)
+		}
+		if m != "OK" {
+			return errors.Errorf("got '%s' from redis, expected 'OK'", w)
 		}
 	}
-	return true
+	return nil
 }
 
 // SetState updates the state in Redis.
@@ -379,7 +387,7 @@ func (t *LeakyBucketRedis) SetState(ctx context.Context, state LeakyBucketState,
 			redis.call('set', KEYS[4], ARGV[4], 'PX', ARGV[5]),
 		}
 	else
-		return 0
+		return 'TOKEN_EXPIRED'
 	end
 	`, []string{
 			redisKey(t.prefix, redisKeyLBFencingToken),
@@ -403,8 +411,8 @@ func (t *LeakyBucketRedis) SetState(ctx context.Context, state LeakyBucketState,
 		return ctx.Err()
 	}
 
-	if err != nil || !redisResponseOK(result, 4) {
+	if err != nil {
 		return errors.Wrap(err, "failed to save keys to redis")
 	}
-	return nil
+	return checkResponseFromRedis(result, 4)
 }

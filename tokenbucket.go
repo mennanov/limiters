@@ -106,7 +106,8 @@ func (t *TokenBucket) Limit(ctx context.Context) (time.Duration, error) {
 //
 // Although it can be used as a global rate limiter with a round-robin load-balancer.
 type TokenBucketInMemory struct {
-	state TokenBucketState
+	state        TokenBucketState
+	fencingToken int64
 }
 
 // NewTokenBucketInMemory creates a new instance of TokenBucketInMemory.
@@ -120,8 +121,12 @@ func (t *TokenBucketInMemory) State(ctx context.Context) (TokenBucketState, erro
 }
 
 // SetState sets the current bucket's state.
-func (t *TokenBucketInMemory) SetState(ctx context.Context, state TokenBucketState, _ int64) error {
+func (t *TokenBucketInMemory) SetState(ctx context.Context, state TokenBucketState, fencingToken int64) error {
+	if fencingToken < t.fencingToken {
+		return ErrFencingTokenExpired
+	}
 	t.state = state
+	t.fencingToken = fencingToken
 	return ctx.Err()
 }
 
@@ -266,30 +271,26 @@ func (t *TokenBucketEtcd) createLease(ctx context.Context) error {
 // save saves the state to etcd using the existing lease and the fencing token.
 func (t *TokenBucketEtcd) save(ctx context.Context, fencingToken int64) error {
 	// Put the keys only if the fencing token does not exist or its value is <= the given value.
-	// TODO: figure out how to do that in 1 RPC instead of 3 (worst case): OR logic is needed in the IF stmt.
-	//  See https://github.com/etcd-io/etcd/issues/11089
-	for _, cs := range []clientv3.Cmp{
-		clientv3.Compare(clientv3.Value(etcdKey(t.prefix, etcdKeyTBFencingToken)), "=", fmt.Sprintf("%d", fencingToken)),
-		clientv3.Compare(clientv3.CreateRevision(etcdKey(t.prefix, etcdKeyTBFencingToken)), "=", 0),
-		clientv3.Compare(clientv3.Value(etcdKey(t.prefix, etcdKeyTBFencingToken)), "<", fmt.Sprintf("%d", fencingToken)),
-	} {
-		r, err := t.cli.Txn(ctx).If(cs).Then(
-			clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBAvailable), fmt.Sprintf("%d", t.state.Available), clientv3.WithLease(t.leaseID)),
-			clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBLast), fmt.Sprintf("%d", t.state.Last), clientv3.WithLease(t.leaseID)),
-			clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBLease), fmt.Sprintf("%d", t.leaseID), clientv3.WithLease(t.leaseID)),
-			clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBRefillRate), fmt.Sprintf("%d", t.state.RefillRate), clientv3.WithLease(t.leaseID)),
-			clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBCapacity), fmt.Sprintf("%d", t.state.Capacity), clientv3.WithLease(t.leaseID)),
-			clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBFencingToken), fmt.Sprintf("%d", fencingToken), clientv3.WithLease(t.leaseID)),
-		).Commit()
-		if err != nil {
-			return errors.Wrap(err, "failed to commit a transaction to etcd")
-		}
-
-		if r.Succeeded {
-			return nil
-		}
+	// etcd does not support logical OR, so inverse the logic about (using De Morgan's law).
+	r, err := t.cli.Txn(ctx).If(
+		clientv3.Compare(clientv3.CreateRevision(etcdKey(t.prefix, etcdKeyTBFencingToken)), "!=", 0),
+		clientv3.Compare(clientv3.Value(etcdKey(t.prefix, etcdKeyTBFencingToken)), ">", fmt.Sprintf("%d", fencingToken)),
+	).Else(
+		clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBAvailable), fmt.Sprintf("%d", t.state.Available), clientv3.WithLease(t.leaseID)),
+		clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBLast), fmt.Sprintf("%d", t.state.Last), clientv3.WithLease(t.leaseID)),
+		clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBLease), fmt.Sprintf("%d", t.leaseID), clientv3.WithLease(t.leaseID)),
+		clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBRefillRate), fmt.Sprintf("%d", t.state.RefillRate), clientv3.WithLease(t.leaseID)),
+		clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBCapacity), fmt.Sprintf("%d", t.state.Capacity), clientv3.WithLease(t.leaseID)),
+		clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBFencingToken), fmt.Sprintf("%d", fencingToken), clientv3.WithLease(t.leaseID)),
+	).Commit()
+	if err != nil {
+		return errors.Wrap(err, "failed to commit a transaction to etcd")
 	}
-	return errors.New("failed to save keys to etcd: fencing token expired")
+
+	if !r.Succeeded {
+		return nil
+	}
+	return ErrFencingTokenExpired
 }
 
 // SetState updates the state of the bucket.
@@ -300,12 +301,12 @@ func (t *TokenBucketEtcd) SetState(ctx context.Context, state TokenBucketState, 
 		if err := t.createLease(ctx); err != nil {
 			return err
 		}
-		// No need to send KeepAlive for the newly creates lease: save the state immediately.
+		// No need to send KeepAlive for the newly created lease: save the state immediately.
 		return t.save(ctx, fencingToken)
 	}
 	// Send the KeepAlive request to extend the existing lease.
 	if _, err := t.cli.KeepAliveOnce(ctx, t.leaseID); err == rpctypes.ErrLeaseNotFound {
-		// Create a new lease since the current one has expired.
+		// Create a new lease since the current one has expired or never existed.
 		if err := t.createLease(ctx); err != nil {
 			return err
 		}
@@ -435,7 +436,7 @@ func (t *TokenBucketRedis) SetState(ctx context.Context, state TokenBucketState,
 			redis.call('set', KEYS[5], ARGV[5], 'PX', ARGV[6]),
 		}
 	else
-		return 0
+		return 'TOKEN_EXPIRED'
 	end
 	`, []string{
 			redisKey(t.prefix, redisKeyTBFencingToken),
@@ -461,8 +462,8 @@ func (t *TokenBucketRedis) SetState(ctx context.Context, state TokenBucketState,
 		return ctx.Err()
 	}
 
-	if err != nil || !redisResponseOK(result, 5) {
+	if err != nil {
 		return errors.Wrap(err, "failed to save keys to redis")
 	}
-	return nil
+	return checkResponseFromRedis(result, 5)
 }
