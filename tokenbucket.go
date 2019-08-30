@@ -16,14 +16,15 @@ import (
 
 // TokenBucketState represents a state of a token bucket.
 type TokenBucketState struct {
-	// RefillRate is the tokens refill rate.
-	RefillRate time.Duration
-	// Capacity is the bucket's capacity.
-	Capacity int64
 	// Last is the last time the state was updated (Unix timestamp in nanoseconds).
 	Last int64
 	// Available is the number of available tokens in the bucket.
 	Available int64
+}
+
+// isZero returns true if the bucket state is zero valued.
+func (s TokenBucketState) isZero() bool {
+	return s.Last == 0 && s.Available == 0
 }
 
 // TokenBucketStateBackend interface encapsulates the logic of retrieving and persisting the state of a TokenBucket.
@@ -40,12 +41,23 @@ type TokenBucket struct {
 	TokenBucketStateBackend
 	Clock
 	Logger
-	mu sync.Mutex
+	// RefillRate is the tokens refill rate.
+	RefillRate time.Duration
+	// Capacity is the bucket's capacity.
+	Capacity int64
+	mu       sync.Mutex
 }
 
 // NewTokenBucket creates a new instance of TokenBucket.
-func NewTokenBucket(locker Locker, tokenBucketStateBackend TokenBucketStateBackend, clock Clock, logger Logger) *TokenBucket {
-	return &TokenBucket{Locker: locker, TokenBucketStateBackend: tokenBucketStateBackend, Clock: clock, Logger: logger}
+func NewTokenBucket(capacity int64, refillRate time.Duration, locker Locker, tokenBucketStateBackend TokenBucketStateBackend, clock Clock, logger Logger) *TokenBucket {
+	return &TokenBucket{
+		Locker:                  locker,
+		TokenBucketStateBackend: tokenBucketStateBackend,
+		Clock:                   clock,
+		Logger:                  logger,
+		RefillRate:              refillRate,
+		Capacity:                capacity,
+	}
 }
 
 // Take takes tokens from the bucket.
@@ -71,19 +83,23 @@ func (t *TokenBucket) Take(ctx context.Context, tokens int64) (time.Duration, er
 	if err != nil {
 		return 0, err
 	}
+	if state.isZero() {
+		// Initially the bucket is full.
+		state.Available = t.Capacity
+	}
 	// Refill the bucket.
-	tokensToAdd := (now - state.Last) / int64(state.RefillRate)
+	tokensToAdd := (now - state.Last) / int64(t.RefillRate)
 	if tokensToAdd > 0 {
 		state.Last = now
-		if tokensToAdd+state.Available <= state.Capacity {
+		if tokensToAdd+state.Available <= t.Capacity {
 			state.Available += tokensToAdd
 		} else {
-			state.Available = state.Capacity
+			state.Available = t.Capacity
 		}
 	}
 
 	if tokens > state.Available {
-		return state.RefillRate * time.Duration(tokens-state.Available), ErrLimitExhausted
+		return t.RefillRate * time.Duration(tokens-state.Available), ErrLimitExhausted
 	}
 	// Take the tokens from the bucket.
 	state.Available -= tokens
@@ -111,8 +127,8 @@ type TokenBucketInMemory struct {
 }
 
 // NewTokenBucketInMemory creates a new instance of TokenBucketInMemory.
-func NewTokenBucketInMemory(state TokenBucketState) *TokenBucketInMemory {
-	return &TokenBucketInMemory{state: state}
+func NewTokenBucketInMemory() *TokenBucketInMemory {
+	return &TokenBucketInMemory{}
 }
 
 // State returns the current bucket's state.
@@ -132,8 +148,6 @@ func (t *TokenBucketInMemory) SetState(ctx context.Context, state TokenBucketSta
 
 const (
 	etcdKeyTBLease        = "lease"
-	etcdKeyTBRefillRate   = "refill_rate"
-	etcdKeyTBCapacity     = "capacity"
 	etcdKeyTBAvailable    = "available"
 	etcdKeyTBLast         = "last"
 	etcdKeyTBFencingToken = "fencing_token"
@@ -153,8 +167,6 @@ const (
 // access to the business critical endpoints where each access must be reliably logged (e.g. change password, withdraw
 // funds).
 type TokenBucketEtcd struct {
-	// Initial state of the bucket.
-	state TokenBucketState
 	// prefix is the etcd key prefix.
 	prefix  string
 	cli     *clientv3.Client
@@ -166,9 +178,8 @@ type TokenBucketEtcd struct {
 // Prefix is used as an etcd key prefix for all keys stored in etcd by this algorithm.
 // TTL is a TTL of the etcd lease in seconds used to store all the keys: all they keys are automatically deleted after
 // the TTL expires.
-func NewTokenBucketEtcd(cli *clientv3.Client, prefix string, state TokenBucketState, ttl time.Duration) *TokenBucketEtcd {
+func NewTokenBucketEtcd(cli *clientv3.Client, prefix string, ttl time.Duration) *TokenBucketEtcd {
 	return &TokenBucketEtcd{
-		state:  state,
 		prefix: prefix,
 		cli:    cli,
 		ttl:    ttl,
@@ -203,8 +214,9 @@ func (t *TokenBucketEtcd) State(ctx context.Context) (TokenBucketState, error) {
 	if err != nil {
 		return TokenBucketState{}, errors.Wrapf(err, "failed to get keys in range ['%s', '%s') from etcd", t.prefix, incPrefix(t.prefix))
 	}
-	if len(r.Kvs) < 6 {
-		return t.state, nil
+	if len(r.Kvs) == 0 {
+		// State not found, return zero valued state.
+		return TokenBucketState{}, nil
 	}
 	state := TokenBucketState{}
 	parsed := 0
@@ -218,29 +230,13 @@ func (t *TokenBucketEtcd) State(ctx context.Context) (TokenBucketState, error) {
 			state.Available = v
 			parsed |= 1
 
-		case etcdKey(t.prefix, etcdKeyTBCapacity):
-			v, err := parseEtcdInt64(kv)
-			if err != nil {
-				return TokenBucketState{}, err
-			}
-			state.Capacity = v
-			parsed |= 2
-
 		case etcdKey(t.prefix, etcdKeyTBLast):
 			v, err := parseEtcdInt64(kv)
 			if err != nil {
 				return TokenBucketState{}, err
 			}
 			state.Last = v
-			parsed |= 4
-
-		case etcdKey(t.prefix, etcdKeyTBRefillRate):
-			v, err := parseEtcdInt64(kv)
-			if err != nil {
-				return TokenBucketState{}, err
-			}
-			state.RefillRate = time.Duration(v)
-			parsed |= 8
+			parsed |= 2
 
 		case etcdKey(t.prefix, etcdKeyTBLease):
 			v, err := parseEtcdInt64(kv)
@@ -248,10 +244,10 @@ func (t *TokenBucketEtcd) State(ctx context.Context) (TokenBucketState, error) {
 				return TokenBucketState{}, err
 			}
 			t.leaseID = clientv3.LeaseID(v)
-			parsed |= 16
+			parsed |= 4
 		}
 	}
-	if parsed != 31 {
+	if parsed != 7 {
 		return TokenBucketState{}, errors.New("failed to get state from etcd: some keys are missing")
 	}
 	return state, nil
@@ -268,18 +264,16 @@ func (t *TokenBucketEtcd) createLease(ctx context.Context) error {
 }
 
 // save saves the state to etcd using the existing lease and the fencing token.
-func (t *TokenBucketEtcd) save(ctx context.Context, fencingToken int64) error {
+func (t *TokenBucketEtcd) save(ctx context.Context, state TokenBucketState, fencingToken int64) error {
 	// Put the keys only if the fencing token does not exist or its value is <= the given value.
 	// etcd does not support logical OR, so inverse the logic about (using De Morgan's law).
 	r, err := t.cli.Txn(ctx).If(
 		clientv3.Compare(clientv3.CreateRevision(etcdKey(t.prefix, etcdKeyTBFencingToken)), "!=", 0),
 		clientv3.Compare(clientv3.Value(etcdKey(t.prefix, etcdKeyTBFencingToken)), ">", fmt.Sprintf("%d", fencingToken)),
 	).Else(
-		clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBAvailable), fmt.Sprintf("%d", t.state.Available), clientv3.WithLease(t.leaseID)),
-		clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBLast), fmt.Sprintf("%d", t.state.Last), clientv3.WithLease(t.leaseID)),
+		clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBAvailable), fmt.Sprintf("%d", state.Available), clientv3.WithLease(t.leaseID)),
+		clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBLast), fmt.Sprintf("%d", state.Last), clientv3.WithLease(t.leaseID)),
 		clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBLease), fmt.Sprintf("%d", t.leaseID), clientv3.WithLease(t.leaseID)),
-		clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBRefillRate), fmt.Sprintf("%d", t.state.RefillRate), clientv3.WithLease(t.leaseID)),
-		clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBCapacity), fmt.Sprintf("%d", t.state.Capacity), clientv3.WithLease(t.leaseID)),
 		clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBFencingToken), fmt.Sprintf("%d", fencingToken), clientv3.WithLease(t.leaseID)),
 	).Commit()
 	if err != nil {
@@ -294,31 +288,28 @@ func (t *TokenBucketEtcd) save(ctx context.Context, fencingToken int64) error {
 
 // SetState updates the state of the bucket.
 func (t *TokenBucketEtcd) SetState(ctx context.Context, state TokenBucketState, fencingToken int64) error {
-	t.state = state
 	if t.leaseID == 0 {
 		// Lease does not exist, create one.
 		if err := t.createLease(ctx); err != nil {
 			return err
 		}
 		// No need to send KeepAlive for the newly created lease: save the state immediately.
-		return t.save(ctx, fencingToken)
+		return t.save(ctx, state, fencingToken)
 	}
 	// Send the KeepAlive request to extend the existing lease.
 	if _, err := t.cli.KeepAliveOnce(ctx, t.leaseID); err == rpctypes.ErrLeaseNotFound {
-		// Create a new lease since the current one has expired or never existed.
+		// Create a new lease since the current one has expired.
 		if err := t.createLease(ctx); err != nil {
 			return err
 		}
 	} else if err != nil {
 		return errors.Wrapf(err, "failed to extend the lease '%d'", t.leaseID)
 	}
-	return t.save(ctx, fencingToken)
+	return t.save(ctx, state, fencingToken)
 }
 
 const (
 	redisKeyTBAvailable    = "available"
-	redisKeyTBCapacity     = "capacity"
-	redisKeyTBRefillRate   = "refill_rate"
 	redisKeyTBLast         = "last"
 	redisKeyTBFencingToken = "fencing_token"
 )
@@ -336,8 +327,6 @@ func redisKey(prefix, key string) string {
 // Although depending on a persistence and a cluster configuration some data might be lost in case of a failure
 // resulting in an under-limiting the accesses to the service.
 type TokenBucketRedis struct {
-	// Initial state of the bucket.
-	state        TokenBucketState
 	cli          *redis.Client
 	prefix       string
 	ttl          time.Duration
@@ -347,8 +336,8 @@ type TokenBucketRedis struct {
 // NewTokenBucketRedis creates a new TokenBucketRedis instance.
 // Prefix is the key prefix used to store all the keys used in this implementation in Redis.
 // TTL is the TTL of the stored keys.
-func NewTokenBucketRedis(cli *redis.Client, prefix string, state TokenBucketState, ttl time.Duration) *TokenBucketRedis {
-	return &TokenBucketRedis{state: state, cli: cli, prefix: prefix, ttl: ttl}
+func NewTokenBucketRedis(cli *redis.Client, prefix string, ttl time.Duration) *TokenBucketRedis {
+	return &TokenBucketRedis{cli: cli, prefix: prefix, ttl: ttl}
 }
 
 // State gets the bucket's state from Redis.
@@ -358,8 +347,6 @@ func (t *TokenBucketRedis) State(ctx context.Context) (TokenBucketState, error) 
 	done := make(chan struct{}, 1)
 	go func() {
 		values, err = t.cli.MGet(
-			redisKey(t.prefix, redisKeyTBRefillRate),
-			redisKey(t.prefix, redisKeyTBCapacity),
 			redisKey(t.prefix, redisKeyTBLast),
 			redisKey(t.prefix, redisKeyTBAvailable),
 			redisKey(t.prefix, redisKeyTBFencingToken),
@@ -386,40 +373,29 @@ func (t *TokenBucketRedis) State(ctx context.Context) (TokenBucketState, error) 
 	}
 	if nilAny || err == redis.Nil {
 		// Keys don't exist, return the initial state.
-		return t.state, nil
+		return TokenBucketState{}, nil
 	}
 
-	refillRate, err := strconv.ParseInt(values[0].(string), 10, 64)
+	last, err := strconv.ParseInt(values[0].(string), 10, 64)
 	if err != nil {
 		return TokenBucketState{}, err
 	}
-	capacity, err := strconv.ParseInt(values[1].(string), 10, 64)
+	available, err := strconv.ParseInt(values[1].(string), 10, 64)
 	if err != nil {
 		return TokenBucketState{}, err
 	}
-	last, err := strconv.ParseInt(values[2].(string), 10, 64)
-	if err != nil {
-		return TokenBucketState{}, err
-	}
-	available, err := strconv.ParseInt(values[3].(string), 10, 64)
-	if err != nil {
-		return TokenBucketState{}, err
-	}
-	t.fencingToken, err = strconv.ParseInt(values[4].(string), 10, 64)
+	t.fencingToken, err = strconv.ParseInt(values[2].(string), 10, 64)
 	if err != nil {
 		return TokenBucketState{}, err
 	}
 	return TokenBucketState{
-		RefillRate: time.Duration(refillRate),
-		Capacity:   capacity,
-		Last:       last,
-		Available:  available,
+		Last:      last,
+		Available: available,
 	}, nil
 }
 
 // SetState updates the state in Redis.
 func (t *TokenBucketRedis) SetState(ctx context.Context, state TokenBucketState, fencingToken int64) error {
-	t.state = state
 	var result interface{}
 	var err error
 	done := make(chan struct{}, 1)
@@ -428,25 +404,19 @@ func (t *TokenBucketRedis) SetState(ctx context.Context, state TokenBucketState,
 	local token = tonumber(redis.call('get', KEYS[1])) or 0
 	if token <= tonumber(ARGV[1]) then
 		return {
-			redis.call('set', KEYS[1], ARGV[1], 'PX', ARGV[6]),
-			redis.call('set', KEYS[2], ARGV[2], 'PX', ARGV[6]),
-			redis.call('set', KEYS[3], ARGV[3], 'PX', ARGV[6]),
-			redis.call('set', KEYS[4], ARGV[4], 'PX', ARGV[6]),
-			redis.call('set', KEYS[5], ARGV[5], 'PX', ARGV[6]),
+			redis.call('set', KEYS[1], ARGV[1], 'PX', ARGV[4]),
+			redis.call('set', KEYS[2], ARGV[2], 'PX', ARGV[4]),
+			redis.call('set', KEYS[3], ARGV[3], 'PX', ARGV[4]),
 		}
 	else
 		return 'TOKEN_EXPIRED'
 	end
 	`, []string{
 			redisKey(t.prefix, redisKeyTBFencingToken),
-			redisKey(t.prefix, redisKeyTBRefillRate),
-			redisKey(t.prefix, redisKeyTBCapacity),
 			redisKey(t.prefix, redisKeyTBLast),
 			redisKey(t.prefix, redisKeyTBAvailable),
 		},
 			fencingToken,
-			int64(state.RefillRate),
-			state.Capacity,
 			state.Last,
 			state.Available,
 			// TTL in milliseconds: 1e9/1e6.
@@ -464,5 +434,5 @@ func (t *TokenBucketRedis) SetState(ctx context.Context, state TokenBucketState,
 	if err != nil {
 		return errors.Wrap(err, "failed to save keys to redis")
 	}
-	return checkResponseFromRedis(result, 5)
+	return checkResponseFromRedis(result, 3)
 }

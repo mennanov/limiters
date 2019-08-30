@@ -14,27 +14,18 @@ import (
 func (s *LimitersTestSuite) leakyBuckets(capacity int64, rate time.Duration, clock l.Clock) []*l.LeakyBucket {
 	var buckets []*l.LeakyBucket
 	for _, locker := range s.lockers() {
-		for _, backend := range s.leakyBucketBackends(capacity, rate) {
-			buckets = append(buckets, l.NewLeakyBucket(locker, backend, clock, s.logger))
+		for _, backend := range s.leakyBucketBackends() {
+			buckets = append(buckets, l.NewLeakyBucket(capacity, rate, locker, backend, clock, s.logger))
 		}
 	}
 	return buckets
 }
 
-func (s *LimitersTestSuite) leakyBucketBackends(capacity int64, rate time.Duration) []l.LeakyBucketStateBackend {
+func (s *LimitersTestSuite) leakyBucketBackends() []l.LeakyBucketStateBackend {
 	return []l.LeakyBucketStateBackend{
-		l.NewLeakyBucketInMemory(l.LeakyBucketState{
-			Capacity: capacity,
-			Rate:     rate,
-		}),
-		l.NewLeakyBucketEtcd(s.etcdClient, uuid.New().String(), l.LeakyBucketState{
-			Capacity: capacity,
-			Rate:     rate,
-		}, time.Second),
-		l.NewLeakyBucketRedis(s.redisClient, uuid.New().String(), l.LeakyBucketState{
-			Capacity: capacity,
-			Rate:     rate,
-		}, time.Second),
+		l.NewLeakyBucketInMemory(),
+		l.NewLeakyBucketEtcd(s.etcdClient, uuid.New().String(), time.Second),
+		l.NewLeakyBucketRedis(s.redisClient, uuid.New().String(), time.Second),
 	}
 }
 
@@ -164,11 +155,9 @@ func (s *LimitersTestSuite) TestLeakyBucketContextCancelled() {
 
 func (s *LimitersTestSuite) TestLeakyBucketFencingToken() {
 	state := l.LeakyBucketState{
-		Rate:     time.Second,
-		Capacity: 2,
-		Last:     time.Now().UnixNano(),
+		Last: time.Now().UnixNano(),
 	}
-	for _, backend := range s.leakyBucketBackends(1, time.Second) {
+	for _, backend := range s.leakyBucketBackends() {
 		s.Require().NoError(backend.SetState(context.TODO(), state, 2))
 		// Set state with an expired fencing token.
 		s.Require().Error(backend.SetState(context.TODO(), l.LeakyBucketState{}, 1), "%T", backend)

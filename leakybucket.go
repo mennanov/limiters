@@ -15,12 +15,13 @@ import (
 
 // LeakyBucketState represents the state of a LeakyBucket.
 type LeakyBucketState struct {
-	// Capacity is the maximum allowed number of tockens in the bucket.
-	Capacity int64
-	// Rate is the output rate: 1 request per the rate duration.
-	Rate time.Duration
 	// Last is the Unix timestamp in nanoseconds of the most recent request.
 	Last int64
+}
+
+// IzZero returns true if the bucket state is zero valued.
+func (s LeakyBucketState) IzZero() bool {
+	return s.Last == 0
 }
 
 // LeakyBucketStateBackend interface encapsulates the logic of retrieving and persisting the state of a LeakyBucket.
@@ -37,12 +38,23 @@ type LeakyBucket struct {
 	LeakyBucketStateBackend
 	Clock
 	Logger
-	mu sync.Mutex
+	// Capacity is the maximum allowed number of tockens in the bucket.
+	Capacity int64
+	// Rate is the output rate: 1 request per the rate duration (in nanoseconds).
+	Rate int64
+	mu   sync.Mutex
 }
 
 // NewLeakyBucket creates a new instance of LeakyBucket.
-func NewLeakyBucket(locker Locker, leakyBucketStateBackend LeakyBucketStateBackend, clock Clock, logger Logger) *LeakyBucket {
-	return &LeakyBucket{Locker: locker, LeakyBucketStateBackend: leakyBucketStateBackend, Clock: clock, Logger: logger}
+func NewLeakyBucket(capacity int64, rate time.Duration, locker Locker, leakyBucketStateBackend LeakyBucketStateBackend, clock Clock, logger Logger) *LeakyBucket {
+	return &LeakyBucket{
+		Locker:                  locker,
+		LeakyBucketStateBackend: leakyBucketStateBackend,
+		Clock:                   clock,
+		Logger:                  logger,
+		Capacity:                capacity,
+		Rate:                    int64(rate),
+	}
 }
 
 // Limit returns the time duration to wait before the request can be processed.
@@ -66,23 +78,22 @@ func (t *LeakyBucket) Limit(ctx context.Context) (time.Duration, error) {
 	if err != nil {
 		return 0, err
 	}
-	rate := int64(state.Rate)
 	if now < state.Last {
 		// The queue has requests in it: move the current request to the last position + 1.
-		state.Last += rate
+		state.Last += t.Rate
 	} else {
 		// The queue is empty.
 		// The offset is the duration to wait in case the last request happened less than rate duration ago.
 		var offset int64
 		delta := now - state.Last
-		if delta < rate {
-			offset = rate - delta
+		if delta < t.Rate {
+			offset = t.Rate - delta
 		}
 		state.Last = now + offset
 	}
 
 	wait := state.Last - now
-	if wait/rate > state.Capacity {
+	if wait/t.Rate > t.Capacity {
 		return time.Duration(wait), ErrLimitExhausted
 	}
 	if err := t.SetState(ctx, state, fencingToken); err != nil {
@@ -98,8 +109,8 @@ type LeakyBucketInMemory struct {
 }
 
 // NewLeakyBucketInMemory creates a new instance of LeakyBucketInMemory.
-func NewLeakyBucketInMemory(state LeakyBucketState) *LeakyBucketInMemory {
-	return &LeakyBucketInMemory{state: state}
+func NewLeakyBucketInMemory() *LeakyBucketInMemory {
+	return &LeakyBucketInMemory{}
 }
 
 // State gets the current state of the bucket.
@@ -119,8 +130,6 @@ func (l *LeakyBucketInMemory) SetState(ctx context.Context, state LeakyBucketSta
 
 const (
 	etcdKeyLBLease        = "lease"
-	etcdKeyLBRate         = "rate"
-	etcdKeyLBCapacity     = "capacity"
 	etcdKeyLBLast         = "last"
 	etcdKeyLBFencingToken = "fencing_token"
 )
@@ -128,8 +137,6 @@ const (
 // LeakyBucketEtcd is an etcd implementation of a LeakyBucketStateBackend.
 // See the TokenBucketEtcd description for the details on etcd usage.
 type LeakyBucketEtcd struct {
-	// Initial state of the bucket.
-	state LeakyBucketState
 	// prefix is the etcd key prefix.
 	prefix  string
 	cli     *clientv3.Client
@@ -140,9 +147,8 @@ type LeakyBucketEtcd struct {
 // NewLeakyBucketEtcd creates a new LeakyBucketEtcd instance.
 // Prefix is used as an etcd key prefix for all keys stored in etcd by this algorithm.
 // TTL is a TTL of the etcd lease used to store all the keys.
-func NewLeakyBucketEtcd(cli *clientv3.Client, prefix string, state LeakyBucketState, ttl time.Duration) *LeakyBucketEtcd {
+func NewLeakyBucketEtcd(cli *clientv3.Client, prefix string, ttl time.Duration) *LeakyBucketEtcd {
 	return &LeakyBucketEtcd{
-		state:  state,
 		prefix: prefix,
 		cli:    cli,
 		ttl:    ttl,
@@ -159,36 +165,20 @@ func (l *LeakyBucketEtcd) State(ctx context.Context) (LeakyBucketState, error) {
 	if err != nil {
 		return LeakyBucketState{}, errors.Wrapf(err, "failed to get keys in range ['%s', '%s') from etcd", l.prefix, incPrefix(l.prefix))
 	}
-	if len(r.Kvs) < 5 {
-		return l.state, nil
+	if len(r.Kvs) == 0 {
+		return LeakyBucketState{}, nil
 	}
 	state := LeakyBucketState{}
 	parsed := 0
 	for _, kv := range r.Kvs {
 		switch string(kv.Key) {
-		case etcdKey(l.prefix, etcdKeyLBCapacity):
-			v, err := parseEtcdInt64(kv)
-			if err != nil {
-				return LeakyBucketState{}, err
-			}
-			state.Capacity = v
-			parsed |= 1
-
 		case etcdKey(l.prefix, etcdKeyLBLast):
 			v, err := parseEtcdInt64(kv)
 			if err != nil {
 				return LeakyBucketState{}, err
 			}
 			state.Last = v
-			parsed |= 2
-
-		case etcdKey(l.prefix, etcdKeyLBRate):
-			v, err := parseEtcdInt64(kv)
-			if err != nil {
-				return LeakyBucketState{}, err
-			}
-			state.Rate = time.Duration(v)
-			parsed |= 4
+			parsed |= 1
 
 		case etcdKey(l.prefix, etcdKeyLBLease):
 			v, err := parseEtcdInt64(kv)
@@ -196,10 +186,10 @@ func (l *LeakyBucketEtcd) State(ctx context.Context) (LeakyBucketState, error) {
 				return LeakyBucketState{}, err
 			}
 			l.leaseID = clientv3.LeaseID(v)
-			parsed |= 8
+			parsed |= 2
 		}
 	}
-	if parsed != 15 {
+	if parsed != 3 {
 		return LeakyBucketState{}, errors.New("failed to get state from etcd: some keys are missing")
 	}
 	return state, nil
@@ -216,15 +206,13 @@ func (l *LeakyBucketEtcd) createLease(ctx context.Context) error {
 }
 
 // save saves the state to etcd using the existing lease.
-func (l *LeakyBucketEtcd) save(ctx context.Context, fencingToken int64) error {
+func (l *LeakyBucketEtcd) save(ctx context.Context, state LeakyBucketState, fencingToken int64) error {
 	r, err := l.cli.Txn(ctx).If(
 		clientv3.Compare(clientv3.CreateRevision(etcdKey(l.prefix, etcdKeyLBFencingToken)), "!=", 0),
 		clientv3.Compare(clientv3.Value(etcdKey(l.prefix, etcdKeyLBFencingToken)), ">", fmt.Sprintf("%d", fencingToken)),
 	).Else(
-		clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBLast), fmt.Sprintf("%d", l.state.Last), clientv3.WithLease(l.leaseID)),
+		clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBLast), fmt.Sprintf("%d", state.Last), clientv3.WithLease(l.leaseID)),
 		clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBLease), fmt.Sprintf("%d", l.leaseID), clientv3.WithLease(l.leaseID)),
-		clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBRate), fmt.Sprintf("%d", l.state.Rate), clientv3.WithLease(l.leaseID)),
-		clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBCapacity), fmt.Sprintf("%d", l.state.Capacity), clientv3.WithLease(l.leaseID)),
 		clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBFencingToken), fmt.Sprintf("%d", fencingToken), clientv3.WithLease(l.leaseID)),
 	).Commit()
 	if err != nil {
@@ -239,14 +227,13 @@ func (l *LeakyBucketEtcd) save(ctx context.Context, fencingToken int64) error {
 
 // SetState updates the state of the bucket in etcd.
 func (l *LeakyBucketEtcd) SetState(ctx context.Context, state LeakyBucketState, fencingToken int64) error {
-	l.state = state
 	if l.leaseID == 0 {
 		// Lease does not exist, create one.
 		if err := l.createLease(ctx); err != nil {
 			return err
 		}
 		// No need to send KeepAlive for the newly creates lease: save the state immediately.
-		return l.save(ctx, fencingToken)
+		return l.save(ctx, state, fencingToken)
 	}
 	// Send the KeepAlive request to extend the existing lease.
 	if _, err := l.cli.KeepAliveOnce(ctx, l.leaseID); err == rpctypes.ErrLeaseNotFound {
@@ -258,20 +245,16 @@ func (l *LeakyBucketEtcd) SetState(ctx context.Context, state LeakyBucketState, 
 		return errors.Wrapf(err, "failed to extend the lease '%d'", l.leaseID)
 	}
 
-	return l.save(ctx, fencingToken)
+	return l.save(ctx, state, fencingToken)
 }
 
 const (
-	redisKeyLBRate         = "rate"
-	redisKeyLBCapacity     = "capacity"
 	redisKeyLBLast         = "last"
 	redisKeyLBFencingToken = "fencing_token"
 )
 
 // LeakyBucketRedis is a Redis implementation of a LeakyBucketStateBackend.
 type LeakyBucketRedis struct {
-	// Initial state of the bucket.
-	state        LeakyBucketState
 	cli          *redis.Client
 	prefix       string
 	ttl          time.Duration
@@ -281,8 +264,8 @@ type LeakyBucketRedis struct {
 // NewLeakyBucketRedis creates a new LeakyBucketRedis instance.
 // Prefix is the key prefix used to store all the keys used in this implementation in Redis.
 // TTL is the TTL of the stored keys.
-func NewLeakyBucketRedis(cli *redis.Client, prefix string, state LeakyBucketState, ttl time.Duration) *LeakyBucketRedis {
-	return &LeakyBucketRedis{state: state, cli: cli, prefix: prefix, ttl: ttl}
+func NewLeakyBucketRedis(cli *redis.Client, prefix string, ttl time.Duration) *LeakyBucketRedis {
+	return &LeakyBucketRedis{cli: cli, prefix: prefix, ttl: ttl}
 }
 
 // State gets the bucket's state from Redis.
@@ -292,8 +275,6 @@ func (t *LeakyBucketRedis) State(ctx context.Context) (LeakyBucketState, error) 
 	done := make(chan struct{}, 1)
 	go func() {
 		values, err = t.cli.MGet(
-			redisKey(t.prefix, redisKeyLBRate),
-			redisKey(t.prefix, redisKeyLBCapacity),
 			redisKey(t.prefix, redisKeyLBLast),
 			redisKey(t.prefix, redisKeyLBFencingToken),
 		).Result()
@@ -318,30 +299,20 @@ func (t *LeakyBucketRedis) State(ctx context.Context) (LeakyBucketState, error) 
 		}
 	}
 	if nilAny || err == redis.Nil {
-		// Keys don't exist, return the initial state.
-		return t.state, nil
+		// Keys don't exist, return an empty state.
+		return LeakyBucketState{}, nil
 	}
 
-	rate, err := strconv.ParseInt(values[0].(string), 10, 64)
+	last, err := strconv.ParseInt(values[0].(string), 10, 64)
 	if err != nil {
 		return LeakyBucketState{}, err
 	}
-	capacity, err := strconv.ParseInt(values[1].(string), 10, 64)
-	if err != nil {
-		return LeakyBucketState{}, err
-	}
-	last, err := strconv.ParseInt(values[2].(string), 10, 64)
-	if err != nil {
-		return LeakyBucketState{}, err
-	}
-	t.fencingToken, err = strconv.ParseInt(values[3].(string), 10, 64)
+	t.fencingToken, err = strconv.ParseInt(values[1].(string), 10, 64)
 	if err != nil {
 		return LeakyBucketState{}, err
 	}
 	return LeakyBucketState{
-		Rate:     time.Duration(rate),
-		Capacity: capacity,
-		Last:     last,
+		Last: last,
 	}, nil
 }
 
@@ -372,7 +343,6 @@ func checkResponseFromRedis(response interface{}, count int) error {
 // SetState updates the state in Redis.
 // The provided fencing token is checked on the Redis side before saving the keys.
 func (t *LeakyBucketRedis) SetState(ctx context.Context, state LeakyBucketState, fencingToken int64) error {
-	t.state = state
 	var result interface{}
 	var err error
 	done := make(chan struct{}, 1)
@@ -381,23 +351,17 @@ func (t *LeakyBucketRedis) SetState(ctx context.Context, state LeakyBucketState,
 	local token = tonumber(redis.call('get', KEYS[1])) or 0
 	if token <= tonumber(ARGV[1]) then
 		return {
-			redis.call('set', KEYS[1], ARGV[1], 'PX', ARGV[5]),
-			redis.call('set', KEYS[2], ARGV[2], 'PX', ARGV[5]),
-			redis.call('set', KEYS[3], ARGV[3], 'PX', ARGV[5]),
-			redis.call('set', KEYS[4], ARGV[4], 'PX', ARGV[5]),
+			redis.call('set', KEYS[1], ARGV[1], 'PX', ARGV[3]),
+			redis.call('set', KEYS[2], ARGV[2], 'PX', ARGV[3]),
 		}
 	else
 		return 'TOKEN_EXPIRED'
 	end
 	`, []string{
 			redisKey(t.prefix, redisKeyLBFencingToken),
-			redisKey(t.prefix, redisKeyLBRate),
-			redisKey(t.prefix, redisKeyLBCapacity),
 			redisKey(t.prefix, redisKeyLBLast),
 		},
 			fencingToken,
-			int64(state.Rate),
-			state.Capacity,
 			state.Last,
 			// TTL in milliseconds.
 			int64(t.ttl/time.Microsecond)).Result()
@@ -414,5 +378,5 @@ func (t *LeakyBucketRedis) SetState(ctx context.Context, state LeakyBucketState,
 	if err != nil {
 		return errors.Wrap(err, "failed to save keys to redis")
 	}
-	return checkResponseFromRedis(result, 4)
+	return checkResponseFromRedis(result, 2)
 }
