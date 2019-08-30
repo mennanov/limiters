@@ -44,16 +44,12 @@ func Example_simpleGRPCLimiter() {
 
 	rate := time.Second * 3
 	limiter := limiters.NewTokenBucket(
+		2,
+		rate,
 		limiters.NewLockerEtcd(etcdClient, "/ratelimiter_lock/simple/", limiters.NewStdLogger()),
 		limiters.NewTokenBucketRedis(
 			redisClient,
 			"ratelimiter/simple",
-			// Allowance: 1 request per 3 seconds with the burst of size 2.
-			limiters.TokenBucketState{
-				RefillRate: rate,
-				Capacity:   2,
-				Available:  2,
-			},
 			rate),
 		limiters.NewSystemClock(), limiters.NewStdLogger(),
 	)

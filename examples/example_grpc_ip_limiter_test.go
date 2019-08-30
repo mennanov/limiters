@@ -73,16 +73,12 @@ func Example_ipGRPCLimiter() {
 			// Create an IP address based rate limiter.
 			limiter := registry.GetOrCreate(ip, func() limiters.Limiter {
 				return limiters.NewTokenBucket(
+					2,
+					rate,
 					limiters.NewLockerEtcd(etcdClient, fmt.Sprintf("/lock/ip/%s", ip), logger),
 					limiters.NewTokenBucketRedis(
 						redisClient,
 						fmt.Sprintf("/ratelimiter/ip/%s", ip),
-						// Allowance: 1 request per 3 seconds with the burst of size 2.
-						limiters.TokenBucketState{
-							RefillRate: rate,
-							Capacity:   2,
-							Available:  2,
-						},
 						rate),
 					clock, logger)
 			}, rate, clock.Now())
