@@ -2,7 +2,6 @@ package limiters
 
 import (
 	"context"
-	"sync"
 
 	"github.com/coreos/etcd/clientv3"
 	"github.com/coreos/etcd/clientv3/concurrency"
@@ -11,9 +10,8 @@ import (
 
 // Locker is a context aware distributed locker (see sync.Locker).
 type Locker interface {
-	// Lock locks the locker and returns a monotonically increasing fencing token assigned for the lock.
-	// More on fencing tokens: http://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html
-	Lock(ctx context.Context) (fencingToken int64, err error)
+	// Lock locks the locker.
+	Lock(ctx context.Context) error
 	// Unlock unlocks the previously successfully locked lock.
 	Unlock() error
 }
@@ -21,9 +19,6 @@ type Locker interface {
 // LockerNoop is a no-op implementation of the Locker interface.
 // It should only be used with the in-memory backends as they don't need distributed locks.
 type LockerNoop struct {
-	// mu guards the c field below.
-	mu sync.Mutex
-	c  int64
 }
 
 // NewLockerNoop creates a new LockerNoop.
@@ -31,13 +26,9 @@ func NewLockerNoop() *LockerNoop {
 	return &LockerNoop{}
 }
 
-// Lock returns an incrementing fencing token.
-// It does not actually lock anything.
-func (n LockerNoop) Lock(ctx context.Context) (int64, error) {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	n.c++
-	return n.c, ctx.Err()
+// Lock imitates locking.
+func (n LockerNoop) Lock(ctx context.Context) error {
+	return ctx.Err()
 }
 
 // Unlock does nothing.
@@ -63,14 +54,14 @@ func NewLockerEtcd(cli *clientv3.Client, prefix string, logger Logger) *LockerEt
 
 // Lock creates a new session-based lock in etcd and locks it.
 // The returned fencing token is the corresponding lease's ID.
-func (l *LockerEtcd) Lock(ctx context.Context) (int64, error) {
+func (l *LockerEtcd) Lock(ctx context.Context) error {
 	var err error
 	l.session, err = concurrency.NewSession(l.cli, concurrency.WithTTL(1))
 	if err != nil {
-		return 0, errors.Wrap(err, "failed to create an etcd session")
+		return errors.Wrap(err, "failed to create an etcd session")
 	}
 	l.mu = concurrency.NewMutex(l.session, l.prefix)
-	return int64(l.session.Lease()), errors.Wrap(l.mu.Lock(ctx), "failed to lock a mutex in etcd")
+	return errors.Wrap(l.mu.Lock(ctx), "failed to lock a mutex in etcd")
 }
 
 // Unlock unlocks the previously locked lock.

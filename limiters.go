@@ -12,9 +12,8 @@ var (
 	// ErrLimitExhausted is returned by the Limiter in case the number of requests overflows the capacity of a Limiter.
 	ErrLimitExhausted = errors.New("requests limit exhausted")
 
-	// ErrFencingTokenExpired is returned when the token obtained from a Locker.Lock() has expired.
-	// It happens when a state on a backend was modified using a lock that was created later than the current one.
-	ErrFencingTokenExpired = errors.New("fencing token expired")
+	// ErrStateRaceCondition is returned when there is a race condition while saving a state of a rate limiter.
+	ErrStateRaceCondition = errors.New("race condition detected")
 )
 
 // Limiter is the interface that wraps the Limit method.

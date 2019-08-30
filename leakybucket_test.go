@@ -24,8 +24,10 @@ func (s *LimitersTestSuite) leakyBuckets(capacity int64, rate time.Duration, clo
 func (s *LimitersTestSuite) leakyBucketBackends() []l.LeakyBucketStateBackend {
 	return []l.LeakyBucketStateBackend{
 		l.NewLeakyBucketInMemory(),
-		l.NewLeakyBucketEtcd(s.etcdClient, uuid.New().String(), time.Second),
-		l.NewLeakyBucketRedis(s.redisClient, uuid.New().String(), time.Second),
+		l.NewLeakyBucketEtcd(s.etcdClient, uuid.New().String(), time.Second, false),
+		l.NewLeakyBucketEtcd(s.etcdClient, uuid.New().String(), time.Second, true),
+		l.NewLeakyBucketRedis(s.redisClient, uuid.New().String(), time.Second, false),
+		l.NewLeakyBucketRedis(s.redisClient, uuid.New().String(), time.Second, true),
 	}
 }
 
@@ -150,19 +152,5 @@ func (s *LimitersTestSuite) TestLeakyBucketContextCancelled() {
 		}(bucket)
 		// Verify that the second go routine succeeded calling the Limit() method.
 		<-done2
-	}
-}
-
-func (s *LimitersTestSuite) TestLeakyBucketFencingToken() {
-	state := l.LeakyBucketState{
-		Last: time.Now().UnixNano(),
-	}
-	for _, backend := range s.leakyBucketBackends() {
-		s.Require().NoError(backend.SetState(context.TODO(), state, 2))
-		// Set state with an expired fencing token.
-		s.Require().Error(backend.SetState(context.TODO(), l.LeakyBucketState{}, 1), "%T", backend)
-		st, err := backend.State(context.TODO())
-		s.Require().NoError(err)
-		s.Equal(state, st)
 	}
 }

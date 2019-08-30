@@ -3,6 +3,7 @@ package limiters
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strconv"
 	"sync"
 	"time"
@@ -29,7 +30,7 @@ type LeakyBucketStateBackend interface {
 	// State gets the current state of the LeakyBucket.
 	State(ctx context.Context) (LeakyBucketState, error)
 	// SetState sets (persists) the current state of the LeakyBucket.
-	SetState(ctx context.Context, state LeakyBucketState, fencingToken int64) error
+	SetState(ctx context.Context, state LeakyBucketState) error
 }
 
 // LeakyBucket implements the https://en.wikipedia.org/wiki/Leaky_bucket#As_a_queue algorithm.
@@ -65,8 +66,7 @@ func (t *LeakyBucket) Limit(ctx context.Context) (time.Duration, error) {
 	now := t.Clock.Now().UnixNano()
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	fencingToken, err := t.Lock(ctx)
-	if err != nil {
+	if err := t.Lock(ctx); err != nil {
 		return 0, err
 	}
 	defer func() {
@@ -96,7 +96,7 @@ func (t *LeakyBucket) Limit(ctx context.Context) (time.Duration, error) {
 	if wait/t.Rate > t.Capacity {
 		return time.Duration(wait), ErrLimitExhausted
 	}
-	if err := t.SetState(ctx, state, fencingToken); err != nil {
+	if err := t.SetState(ctx, state); err != nil {
 		return 0, err
 	}
 	return time.Duration(wait), nil
@@ -104,8 +104,7 @@ func (t *LeakyBucket) Limit(ctx context.Context) (time.Duration, error) {
 
 // LeakyBucketInMemory is an in-memory implementation of LeakyBucketStateBackend.
 type LeakyBucketInMemory struct {
-	state        LeakyBucketState
-	fencingToken int64
+	state LeakyBucketState
 }
 
 // NewLeakyBucketInMemory creates a new instance of LeakyBucketInMemory.
@@ -119,39 +118,40 @@ func (l *LeakyBucketInMemory) State(ctx context.Context) (LeakyBucketState, erro
 }
 
 // SetState sets the current state of the bucket.
-func (l *LeakyBucketInMemory) SetState(ctx context.Context, state LeakyBucketState, fencingToken int64) error {
-	if fencingToken < l.fencingToken {
-		return ErrFencingTokenExpired
-	}
+func (l *LeakyBucketInMemory) SetState(ctx context.Context, state LeakyBucketState) error {
 	l.state = state
-	l.fencingToken = fencingToken
 	return ctx.Err()
 }
 
 const (
-	etcdKeyLBLease        = "lease"
-	etcdKeyLBLast         = "last"
-	etcdKeyLBFencingToken = "fencing_token"
+	etcdKeyLBLease = "lease"
+	etcdKeyLBLast  = "last"
 )
 
 // LeakyBucketEtcd is an etcd implementation of a LeakyBucketStateBackend.
 // See the TokenBucketEtcd description for the details on etcd usage.
 type LeakyBucketEtcd struct {
 	// prefix is the etcd key prefix.
-	prefix  string
-	cli     *clientv3.Client
-	leaseID clientv3.LeaseID
-	ttl     time.Duration
+	prefix      string
+	cli         *clientv3.Client
+	leaseID     clientv3.LeaseID
+	ttl         time.Duration
+	raceCheck   bool
+	lastVersion int64
 }
 
 // NewLeakyBucketEtcd creates a new LeakyBucketEtcd instance.
 // Prefix is used as an etcd key prefix for all keys stored in etcd by this algorithm.
 // TTL is a TTL of the etcd lease used to store all the keys.
-func NewLeakyBucketEtcd(cli *clientv3.Client, prefix string, ttl time.Duration) *LeakyBucketEtcd {
+//
+// If raceCheck is true and the keys in etcd are modified in between State() and SetState() calls then
+// ErrStateRaceCondition is returned.
+func NewLeakyBucketEtcd(cli *clientv3.Client, prefix string, ttl time.Duration, raceCheck bool) *LeakyBucketEtcd {
 	return &LeakyBucketEtcd{
-		prefix: prefix,
-		cli:    cli,
-		ttl:    ttl,
+		prefix:    prefix,
+		cli:       cli,
+		ttl:       ttl,
+		raceCheck: raceCheck,
 	}
 }
 
@@ -179,6 +179,7 @@ func (l *LeakyBucketEtcd) State(ctx context.Context) (LeakyBucketState, error) {
 			}
 			state.Last = v
 			parsed |= 1
+			l.lastVersion = kv.Version
 
 		case etcdKey(l.prefix, etcdKeyLBLease):
 			v, err := parseEtcdInt64(kv)
@@ -206,14 +207,22 @@ func (l *LeakyBucketEtcd) createLease(ctx context.Context) error {
 }
 
 // save saves the state to etcd using the existing lease.
-func (l *LeakyBucketEtcd) save(ctx context.Context, state LeakyBucketState, fencingToken int64) error {
+func (l *LeakyBucketEtcd) save(ctx context.Context, state LeakyBucketState) error {
+	if !l.raceCheck {
+		if _, err := l.cli.Txn(ctx).Then(
+			clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBLast), fmt.Sprintf("%d", state.Last), clientv3.WithLease(l.leaseID)),
+			clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBLease), fmt.Sprintf("%d", l.leaseID), clientv3.WithLease(l.leaseID)),
+		).Commit(); err != nil {
+			return errors.Wrap(err, "failed to commit a transaction to etcd")
+		}
+		return nil
+	}
+	// Put the keys only if they have not been modified since the most recent read.
 	r, err := l.cli.Txn(ctx).If(
-		clientv3.Compare(clientv3.CreateRevision(etcdKey(l.prefix, etcdKeyLBFencingToken)), "!=", 0),
-		clientv3.Compare(clientv3.Value(etcdKey(l.prefix, etcdKeyLBFencingToken)), ">", fmt.Sprintf("%d", fencingToken)),
+		clientv3.Compare(clientv3.Version(etcdKey(l.prefix, etcdKeyLBLast)), ">", l.lastVersion),
 	).Else(
 		clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBLast), fmt.Sprintf("%d", state.Last), clientv3.WithLease(l.leaseID)),
 		clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBLease), fmt.Sprintf("%d", l.leaseID), clientv3.WithLease(l.leaseID)),
-		clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBFencingToken), fmt.Sprintf("%d", fencingToken), clientv3.WithLease(l.leaseID)),
 	).Commit()
 	if err != nil {
 		return errors.Wrap(err, "failed to commit a transaction to etcd")
@@ -222,18 +231,18 @@ func (l *LeakyBucketEtcd) save(ctx context.Context, state LeakyBucketState, fenc
 	if !r.Succeeded {
 		return nil
 	}
-	return ErrFencingTokenExpired
+	return ErrStateRaceCondition
 }
 
 // SetState updates the state of the bucket in etcd.
-func (l *LeakyBucketEtcd) SetState(ctx context.Context, state LeakyBucketState, fencingToken int64) error {
+func (l *LeakyBucketEtcd) SetState(ctx context.Context, state LeakyBucketState) error {
 	if l.leaseID == 0 {
 		// Lease does not exist, create one.
 		if err := l.createLease(ctx); err != nil {
 			return err
 		}
 		// No need to send KeepAlive for the newly creates lease: save the state immediately.
-		return l.save(ctx, state, fencingToken)
+		return l.save(ctx, state)
 	}
 	// Send the KeepAlive request to extend the existing lease.
 	if _, err := l.cli.KeepAliveOnce(ctx, l.leaseID); err == rpctypes.ErrLeaseNotFound {
@@ -245,27 +254,31 @@ func (l *LeakyBucketEtcd) SetState(ctx context.Context, state LeakyBucketState, 
 		return errors.Wrapf(err, "failed to extend the lease '%d'", l.leaseID)
 	}
 
-	return l.save(ctx, state, fencingToken)
+	return l.save(ctx, state)
 }
 
 const (
-	redisKeyLBLast         = "last"
-	redisKeyLBFencingToken = "fencing_token"
+	redisKeyLBLast    = "last"
+	redisKeyLBVersion = "version"
 )
 
 // LeakyBucketRedis is a Redis implementation of a LeakyBucketStateBackend.
 type LeakyBucketRedis struct {
-	cli          *redis.Client
-	prefix       string
-	ttl          time.Duration
-	fencingToken int64
+	cli         *redis.Client
+	prefix      string
+	ttl         time.Duration
+	raceCheck   bool
+	lastVersion int64
 }
 
 // NewLeakyBucketRedis creates a new LeakyBucketRedis instance.
 // Prefix is the key prefix used to store all the keys used in this implementation in Redis.
 // TTL is the TTL of the stored keys.
-func NewLeakyBucketRedis(cli *redis.Client, prefix string, ttl time.Duration) *LeakyBucketRedis {
-	return &LeakyBucketRedis{cli: cli, prefix: prefix, ttl: ttl}
+//
+// If raceCheck is true and the keys in Redis are modified in between State() and SetState() calls then
+// ErrStateRaceCondition is returned.
+func NewLeakyBucketRedis(cli *redis.Client, prefix string, ttl time.Duration, raceCheck bool) *LeakyBucketRedis {
+	return &LeakyBucketRedis{cli: cli, prefix: prefix, ttl: ttl, raceCheck: raceCheck}
 }
 
 // State gets the bucket's state from Redis.
@@ -274,11 +287,14 @@ func (t *LeakyBucketRedis) State(ctx context.Context) (LeakyBucketState, error) 
 	var err error
 	done := make(chan struct{}, 1)
 	go func() {
-		values, err = t.cli.MGet(
+		defer close(done)
+		keys := []string{
 			redisKey(t.prefix, redisKeyLBLast),
-			redisKey(t.prefix, redisKeyLBFencingToken),
-		).Result()
-		done <- struct{}{}
+		}
+		if t.raceCheck {
+			keys = append(keys, redisKey(t.prefix, redisKeyLBVersion))
+		}
+		values, err = t.cli.MGet(keys...).Result()
 	}()
 
 	select {
@@ -307,65 +323,61 @@ func (t *LeakyBucketRedis) State(ctx context.Context) (LeakyBucketState, error) 
 	if err != nil {
 		return LeakyBucketState{}, err
 	}
-	t.fencingToken, err = strconv.ParseInt(values[1].(string), 10, 64)
-	if err != nil {
-		return LeakyBucketState{}, err
+	if t.raceCheck {
+		t.lastVersion, err = strconv.ParseInt(values[1].(string), 10, 64)
+		if err != nil {
+			return LeakyBucketState{}, err
+		}
 	}
 	return LeakyBucketState{
 		Last: last,
 	}, nil
 }
 
-// checkResponseFromRedis checks that all responses from Redis are "OK".
-func checkResponseFromRedis(response interface{}, count int) error {
-	if s, sok := response.(string); sok && s == "TOKEN_EXPIRED" {
-		return ErrFencingTokenExpired
+func checkResponseFromRedis(response interface{}, expected interface{}) error {
+	if s, sok := response.(string); sok && s == "RACE_CONDITION" {
+		return ErrStateRaceCondition
 	}
-	r, ok := response.([]interface{})
-	if !ok {
-		return errors.Errorf("unexpected response format from redis: %T %+v", response, response)
-	}
-	if len(r) != count {
-		return errors.Errorf("got %d response items from redis, expected %d", len(r), count)
-	}
-	for _, w := range r {
-		m, ok := w.(string)
-		if !ok {
-			return errors.Errorf("unexpected response from redis: %+v", w)
-		}
-		if m != "OK" {
-			return errors.Errorf("got '%s' from redis, expected 'OK'", w)
-		}
+	if !reflect.DeepEqual(response, expected) {
+		return errors.Errorf("got %+v from redis, expected %+v", response, expected)
 	}
 	return nil
 }
 
 // SetState updates the state in Redis.
 // The provided fencing token is checked on the Redis side before saving the keys.
-func (t *LeakyBucketRedis) SetState(ctx context.Context, state LeakyBucketState, fencingToken int64) error {
-	var result interface{}
+func (t *LeakyBucketRedis) SetState(ctx context.Context, state LeakyBucketState) error {
 	var err error
 	done := make(chan struct{}, 1)
 	go func() {
-		result, err = t.cli.Eval(`
-	local token = tonumber(redis.call('get', KEYS[1])) or 0
-	if token <= tonumber(ARGV[1]) then
-		return {
-			redis.call('set', KEYS[1], ARGV[1], 'PX', ARGV[3]),
-			redis.call('set', KEYS[2], ARGV[2], 'PX', ARGV[3]),
+		defer close(done)
+		if !t.raceCheck {
+			err = t.cli.Set(redisKey(t.prefix, redisKeyLBLast), state.Last, t.ttl).Err()
+			return
 		}
-	else
-		return 'TOKEN_EXPIRED'
+		var result interface{}
+		result, err = t.cli.Eval(`
+	local version = tonumber(redis.call('get', KEYS[1])) or 0
+	if version > tonumber(ARGV[1]) then
+		return 'RACE_CONDITION'
 	end
+	return {
+		redis.call('incr', KEYS[1]),
+		redis.call('pexpire', KEYS[1], ARGV[3]),
+		redis.call('set', KEYS[2], ARGV[2], 'PX', ARGV[3]),
+	}
 	`, []string{
-			redisKey(t.prefix, redisKeyLBFencingToken),
+			redisKey(t.prefix, redisKeyLBVersion),
 			redisKey(t.prefix, redisKeyLBLast),
 		},
-			fencingToken,
+			t.lastVersion,
 			state.Last,
 			// TTL in milliseconds.
 			int64(t.ttl/time.Microsecond)).Result()
-		done <- struct{}{}
+
+		if err == nil {
+			err = checkResponseFromRedis(result, []interface{}{t.lastVersion + 1, int64(1), "OK"})
+		}
 	}()
 
 	select {
@@ -375,8 +387,5 @@ func (t *LeakyBucketRedis) SetState(ctx context.Context, state LeakyBucketState,
 		return ctx.Err()
 	}
 
-	if err != nil {
-		return errors.Wrap(err, "failed to save keys to redis")
-	}
-	return checkResponseFromRedis(result, 2)
+	return errors.Wrap(err, "failed to save keys to redis")
 }
