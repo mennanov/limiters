@@ -4,15 +4,17 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/mennanov/limiters)](https://goreportcard.com/report/github.com/mennanov/limiters)
 [![GoDoc](https://godoc.org/github.com/mennanov/limiters?status.svg)](https://godoc.org/github.com/mennanov/limiters)
 
-- [Token bucket](#Token bucket)
+- [`Token bucket`](https://en.wikipedia.org/wiki/Token_bucket)
     - in-memory
     - redis
     - etcd
-- [Leaky bucket](#Leaky bucket)
+- [`Leaky bucket`](https://en.wikipedia.org/wiki/Leaky_bucket#As_a_queue)
     - in-memory
     - redis
     - etcd
-- Sliding log (work in progress)
+- [`Fixed window counter`](https://konghq.com/blog/how-to-design-a-scalable-rate-limiting-algorithm/)
+    - in-memory
+    - redis
 - Sliding window (work in progress)
 
 See the comments in the source code for details on each algorithm's backend implementation for possible caveats and 
@@ -26,7 +28,7 @@ use cases.
 
 ## gRPC example
 
-Global rate limiter for a gRPC service example:
+Global token bucket rate limiter for a gRPC service example:
 ```go
 limiter := limiters.NewTokenBucket(
     limiters.NewLockerEtcd(etcdClient, "/ratelimiter_lock/", logger),

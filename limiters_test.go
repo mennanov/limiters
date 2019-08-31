@@ -26,6 +26,10 @@ func newFakeClock() *fakeClock {
 	return &fakeClock{t: now, initial: now}
 }
 
+func newFakeClockWithTime(t time.Time) *fakeClock {
+	return &fakeClock{t: t, initial: t}
+}
+
 func (c *fakeClock) Now() time.Time {
 	c.mu.Lock()
 	defer c.mu.Unlock()
