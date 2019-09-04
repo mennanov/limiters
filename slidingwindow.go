@@ -111,9 +111,10 @@ func NewSlidingWindowRedis(cli *redis.Client, prefix string) *SlidingWindowRedis
 
 // Increment increments the current window's counter in Redis and returns the number of requests in the previous window
 // and the current one.
-func (s *SlidingWindowRedis) Increment(ctx context.Context, prev, curr time.Time, ttl time.Duration) (prevCount, currCount int64, err error) {
+func (s *SlidingWindowRedis) Increment(ctx context.Context, prev, curr time.Time, ttl time.Duration) (int64, int64, error) {
 	var incr *redis.IntCmd
 	var prevCountCmd *redis.StringCmd
+	var err error
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -126,6 +127,7 @@ func (s *SlidingWindowRedis) Increment(ctx context.Context, prev, curr time.Time
 		})
 	}()
 
+	var prevCount int64
 	select {
 	case <-done:
 		if err == redis.TxFailedErr {
