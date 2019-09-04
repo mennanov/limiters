@@ -41,10 +41,10 @@ type TokenBucket struct {
 	TokenBucketStateBackend
 	Clock
 	Logger
-	// RefillRate is the tokens refill rate.
-	RefillRate time.Duration
-	// Capacity is the bucket's capacity.
-	Capacity int64
+	// refillRate is the tokens refill rate.
+	refillRate time.Duration
+	// capacity is the bucket's capacity.
+	capacity int64
 	mu       sync.Mutex
 }
 
@@ -55,8 +55,8 @@ func NewTokenBucket(capacity int64, refillRate time.Duration, locker Locker, tok
 		TokenBucketStateBackend: tokenBucketStateBackend,
 		Clock:                   clock,
 		Logger:                  logger,
-		RefillRate:              refillRate,
-		Capacity:                capacity,
+		refillRate:              refillRate,
+		capacity:                capacity,
 	}
 }
 
@@ -84,21 +84,21 @@ func (t *TokenBucket) Take(ctx context.Context, tokens int64) (time.Duration, er
 	}
 	if state.isZero() {
 		// Initially the bucket is full.
-		state.Available = t.Capacity
+		state.Available = t.capacity
 	}
 	// Refill the bucket.
-	tokensToAdd := (now - state.Last) / int64(t.RefillRate)
+	tokensToAdd := (now - state.Last) / int64(t.refillRate)
 	if tokensToAdd > 0 {
 		state.Last = now
-		if tokensToAdd+state.Available <= t.Capacity {
+		if tokensToAdd+state.Available <= t.capacity {
 			state.Available += tokensToAdd
 		} else {
-			state.Available = t.Capacity
+			state.Available = t.capacity
 		}
 	}
 
 	if tokens > state.Available {
-		return t.RefillRate * time.Duration(tokens-state.Available), ErrLimitExhausted
+		return t.refillRate * time.Duration(tokens-state.Available), ErrLimitExhausted
 	}
 	// Take the tokens from the bucket.
 	state.Available -= tokens

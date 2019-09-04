@@ -40,9 +40,9 @@ type LeakyBucket struct {
 	Clock
 	Logger
 	// Capacity is the maximum allowed number of tockens in the bucket.
-	Capacity int64
+	capacity int64
 	// Rate is the output rate: 1 request per the rate duration (in nanoseconds).
-	Rate int64
+	rate int64
 	mu   sync.Mutex
 }
 
@@ -53,8 +53,8 @@ func NewLeakyBucket(capacity int64, rate time.Duration, locker Locker, leakyBuck
 		LeakyBucketStateBackend: leakyBucketStateBackend,
 		Clock:                   clock,
 		Logger:                  logger,
-		Capacity:                capacity,
-		Rate:                    int64(rate),
+		capacity:                capacity,
+		rate:                    int64(rate),
 	}
 }
 
@@ -80,20 +80,20 @@ func (t *LeakyBucket) Limit(ctx context.Context) (time.Duration, error) {
 	}
 	if now < state.Last {
 		// The queue has requests in it: move the current request to the last position + 1.
-		state.Last += t.Rate
+		state.Last += t.rate
 	} else {
 		// The queue is empty.
 		// The offset is the duration to wait in case the last request happened less than rate duration ago.
 		var offset int64
 		delta := now - state.Last
-		if delta < t.Rate {
-			offset = t.Rate - delta
+		if delta < t.rate {
+			offset = t.rate - delta
 		}
 		state.Last = now + offset
 	}
 
 	wait := state.Last - now
-	if wait/t.Rate > t.Capacity {
+	if wait/t.rate > t.capacity {
 		return time.Duration(wait), ErrLimitExhausted
 	}
 	if err := t.SetState(ctx, state); err != nil {

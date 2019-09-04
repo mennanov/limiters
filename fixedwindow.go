@@ -24,8 +24,8 @@ type FixedWindowIncrementer interface {
 type FixedWindow struct {
 	FixedWindowIncrementer
 	Clock
-	Rate     time.Duration
-	Capacity int64
+	rate     time.Duration
+	capacity int64
 	mu       sync.Mutex
 	window   time.Time
 	overflow bool
@@ -35,7 +35,7 @@ type FixedWindow struct {
 // Capacity is the maximum amount of requests allowed per window.
 // Rate is the window size.
 func NewFixedWindow(capacity int64, rate time.Duration, fixedWindowIncrementer FixedWindowIncrementer, clock Clock) *FixedWindow {
-	return &FixedWindow{FixedWindowIncrementer: fixedWindowIncrementer, Clock: clock, Rate: rate, Capacity: capacity}
+	return &FixedWindow{FixedWindowIncrementer: fixedWindowIncrementer, Clock: clock, rate: rate, capacity: capacity}
 }
 
 // Limit returns the time duration to wait before the request can be processed.
@@ -44,12 +44,12 @@ func (f *FixedWindow) Limit(ctx context.Context) (time.Duration, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	now := f.Now()
-	window := now.Truncate(f.Rate)
+	window := now.Truncate(f.rate)
 	if f.window != window {
 		f.window = window
 		f.overflow = false
 	}
-	ttl := f.Rate - now.Sub(window)
+	ttl := f.rate - now.Sub(window)
 	if f.overflow {
 		// If the window is already overflowed don't increment the counter.
 		return ttl, ErrLimitExhausted
@@ -58,7 +58,7 @@ func (f *FixedWindow) Limit(ctx context.Context) (time.Duration, error) {
 	if err != nil {
 		return 0, err
 	}
-	if c > f.Capacity {
+	if c > f.capacity {
 		f.overflow = true
 		return ttl, ErrLimitExhausted
 	}

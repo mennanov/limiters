@@ -56,7 +56,7 @@ func NewRegistry() *Registry {
 }
 
 // GetOrCreate gets an existing Limiter by key and updates its expiration time.
-// If the key lookup fails it creates a new limiter by calling the provided limiter closure and puts in on the queue.
+// If the key lookup fails it creates a new limiter by calling the provided limiter closure and puts it on the queue.
 func (r *Registry) GetOrCreate(key string, limiter func() Limiter, ttl time.Duration, now time.Time) Limiter {
 	item, ok := r.m[key]
 	if ok {

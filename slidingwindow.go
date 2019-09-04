@@ -55,10 +55,8 @@ func (s *SlidingWindow) Limit(ctx context.Context) (time.Duration, error) {
 	total := float64(prev*int64(ttl))/float64(s.rate) + float64(curr)
 	if total-float64(s.capacity) >= s.epsilon {
 		var wait time.Duration
-		if curr < s.capacity-1 && prev > 0 {
+		if curr <= s.capacity-1 && prev > 0 {
 			wait = ttl - time.Duration(float64(s.capacity-1-curr)/float64(prev)*float64(s.rate))
-		} else if curr == s.capacity-1 {
-			wait = ttl
 		} else {
 			// If prev == 0.
 			wait = ttl + time.Duration((1-float64(s.capacity-1)/float64(curr))*float64(s.rate))
