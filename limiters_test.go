@@ -1,6 +1,7 @@
 package limiters_test
 
 import (
+	"context"
 	"os"
 	"strings"
 	"sync"
@@ -84,5 +85,47 @@ func (s *LimitersTestSuite) lockers() []l.Locker {
 	return []l.Locker{
 		l.NewLockerNoop(),
 		l.NewLockerEtcd(s.etcdClient, uuid.New().String(), s.logger),
+	}
+}
+
+func (s *LimitersTestSuite) limiters(capacity int64, rate time.Duration, clock l.Clock, epsilon float64) []l.Limiter {
+	var limiters []l.Limiter
+	for _, b := range s.tokenBuckets(capacity, rate, clock) {
+		limiters = append(limiters, b)
+	}
+	for _, b := range s.leakyBuckets(capacity, rate, clock) {
+		limiters = append(limiters, b)
+	}
+	for _, w := range s.fixedWindows(capacity, rate, clock) {
+		limiters = append(limiters, w)
+	}
+	for _, w := range s.slidingWindows(capacity, rate, clock, epsilon) {
+		limiters = append(limiters, w)
+	}
+	return limiters
+}
+
+func (s *LimitersTestSuite) TestLimitContextCancelled() {
+	clock := newFakeClock()
+	for _, limiter := range s.limiters(2, time.Second, clock, 1e-9) {
+		done1 := make(chan struct{})
+		go func(limiter l.Limiter) {
+			defer close(done1)
+			// The context is expired shortly after it is created.
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			_, err := limiter.Limit(ctx)
+			s.Error(err, "%T", limiter)
+		}(limiter)
+		done2 := make(chan struct{})
+		go func(limiter l.Limiter) {
+			defer close(done2)
+			<-done1
+			ctx := context.Background()
+			_, err := limiter.Limit(ctx)
+			s.NoError(err, "%T", limiter)
+		}(limiter)
+		// Verify that the second go routine succeeded calling the Limit() method.
+		<-done2
 	}
 }

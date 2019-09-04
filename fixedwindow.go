@@ -12,17 +12,23 @@ import (
 
 // FixedWindowIncrementer wraps the Increment method.
 type FixedWindowIncrementer interface {
-	// Increment increments the request counter for the window.
-	// TTL provides the time duration before the window is changed.
+	// Increment increments the request counter for the window and returns the counter value.
+	// TTL is the time duration before the next window.
 	Increment(ctx context.Context, window time.Time, ttl time.Duration) (int64, error)
 }
 
 // FixedWindow implements a Fixed Window rate limiting algorithm.
+//
+// Simple and memory efficient algorithm that does not need a distributed lock.
+// However it may be lenient when there are many requests around the boundary between 2 adjacent windows.
 type FixedWindow struct {
 	FixedWindowIncrementer
 	Clock
 	Rate     time.Duration
 	Capacity int64
+	mu       sync.Mutex
+	window   time.Time
+	overflow bool
 }
 
 // NewFixedWindow creates a new instance of FixedWindow.
@@ -35,20 +41,31 @@ func NewFixedWindow(capacity int64, rate time.Duration, fixedWindowIncrementer F
 // Limit returns the time duration to wait before the request can be processed.
 // It returns ErrLimitExhausted if the request overflows the window's capacity.
 func (f *FixedWindow) Limit(ctx context.Context) (time.Duration, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	now := f.Now()
 	window := now.Truncate(f.Rate)
+	if f.window != window {
+		f.window = window
+		f.overflow = false
+	}
 	ttl := f.Rate - now.Sub(window)
+	if f.overflow {
+		// If the window is already overflowed don't increment the counter.
+		return ttl, ErrLimitExhausted
+	}
 	c, err := f.Increment(ctx, window, ttl)
 	if err != nil {
 		return 0, err
 	}
 	if c > f.Capacity {
+		f.overflow = true
 		return ttl, ErrLimitExhausted
 	}
 	return 0, nil
 }
 
-// FixedWindowInMemory is an in-memory implementation of FixedWindow.
+// FixedWindowInMemory is an in-memory implementation of FixedWindowIncrementer.
 type FixedWindowInMemory struct {
 	mu     sync.Mutex
 	c      int64

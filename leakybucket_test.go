@@ -129,28 +129,3 @@ func (s *LimitersTestSuite) TestLeakyBucketOverflow() {
 		s.Equal(rate*2, wait)
 	}
 }
-
-func (s *LimitersTestSuite) TestLeakyBucketContextCancelled() {
-	clock := newFakeClock()
-	for _, bucket := range s.leakyBuckets(1, 1, clock) {
-		done1 := make(chan struct{})
-		go func(bucket *l.LeakyBucket) {
-			defer close(done1)
-			// The context is expired shortly after it is created.
-			ctx, cancel := context.WithCancel(context.Background())
-			cancel()
-			_, err := bucket.Limit(ctx)
-			s.Error(err, bucket)
-		}(bucket)
-		done2 := make(chan struct{})
-		go func(bucket *l.LeakyBucket) {
-			defer close(done2)
-			<-done1
-			ctx := context.Background()
-			_, err := bucket.Limit(ctx)
-			s.NoError(err)
-		}(bucket)
-		// Verify that the second go routine succeeded calling the Limit() method.
-		<-done2
-	}
-}

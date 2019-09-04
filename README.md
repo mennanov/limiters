@@ -5,26 +5,42 @@
 [![GoDoc](https://godoc.org/github.com/mennanov/limiters?status.svg)](https://godoc.org/github.com/mennanov/limiters)
 
 - [`Token bucket`](https://en.wikipedia.org/wiki/Token_bucket)
-    - in-memory
+    - in-memory (local)
     - redis
     - etcd
+
+    Allows requests at a certain input rate with possible bursts configured by the capacity parameter.  
+    The output rate equals to the input rate.  
+    Precise, but requires a lock (provided).
+
 - [`Leaky bucket`](https://en.wikipedia.org/wiki/Leaky_bucket#As_a_queue)
-    - in-memory
+    - in-memory (local)
     - redis
     - etcd
+
+    Puts requests in a FIFO queue to be processed at a constant rate.  
+    There are no restrictions on the input rate except for the capacity of the queue.  
+    Requires a lock (provided).
+
 - [`Fixed window counter`](https://konghq.com/blog/how-to-design-a-scalable-rate-limiting-algorithm/)
-    - in-memory
+    - in-memory (local)
     - redis
-- Sliding window (work in progress)
 
-See the comments in the source code for details on each algorithm's backend implementation for possible caveats and 
-use cases.
+    Simple and resources efficient algorithm that does not need a lock.  
+    Precision may be adjusted by the size of the window.  
+    May be lenient when there are many requests around the boundary between 2 adjacent windows.
 
-## Distributed locks
-- in-memory
-- etcd
-- Consul (work in progress)
-- Zookeeper (work in progress)
+- [`Sliding window counter`](https://konghq.com/blog/how-to-design-a-scalable-rate-limiting-algorithm/)
+    - in-memory (local)
+    - redis
+
+    Smoothes out the bursts around the boundary between 2 adjacent windows.  
+    Needs as twice more memory as the `Fixed Window` algorithm (2 windows instead of 1 at a time).  
+    It will disallow _all_ the requests in case when a client is flooding the service with requests.
+    It's the client's responsibility to handle a disallowed request properly: wait before making a new one again.
+
+- [`Sliding window log`](https://konghq.com/blog/how-to-design-a-scalable-rate-limiting-algorithm/)
+(work in progress)
 
 ## gRPC example
 
@@ -58,7 +74,8 @@ s := grpc.NewServer(grpc.UnaryInterceptor(
     }))
 ```
 
-Also see the IP address based gRPC global rate limiter in the [examples](examples/example_grpc_test.go) directory.
+For something close to a real world example see the IP address based gRPC global rate limiter in the 
+[examples](examples/example_grpc_ip_limiter_test.go) directory.
 
 ## Testing
 
@@ -72,17 +89,3 @@ Run [Drone](https://drone.io) CI tests locally:
 ```bash
 for p in "go1.12" "go1.11" "go1.10" "go1.9" "lint"; do drone exec --pipeline=${p}; done
 ```
-
----
-### Token bucket
-[Token bucket](https://en.wikipedia.org/wiki/Token_bucket) allows requests at a certain input rate with possible bursts
-configured by the capacity parameter. The output rate equals to the input rate.
-
-Use case: restrict an access to a service up to a certain rate (e.g. 10 requests per second) while allowing the requests
-to arrive in batches (bursts).
-
-### Leaky bucket
-[Leaky bucket](https://en.wikipedia.org/wiki/Leaky_bucket#As_a_queue) puts requests in a FIFO queue to be processed
-at a certain constant rate. There are no restrictions on the input rate except for the capacity of the queue.
-
-Use case: process requests at a constant predictable rate.
