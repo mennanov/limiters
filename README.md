@@ -87,5 +87,5 @@ ETCD_ENDPOINTS="127.0.0.1:2379" REDIS_ADDR="127.0.0.1:6379" go test
 
 Run [Drone](https://drone.io) CI tests locally:
 ```bash
-for p in "go1.12" "go1.11" "go1.10" "go1.9" "lint"; do drone exec --pipeline=${p}; done
+for p in "go1.13" "go1.12" "go1.11" "lint"; do drone exec --pipeline=${p}; done
 ```
