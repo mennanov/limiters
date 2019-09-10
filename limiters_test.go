@@ -88,8 +88,11 @@ func (s *LimitersTestSuite) lockers() []l.Locker {
 	}
 }
 
-func (s *LimitersTestSuite) limiters(capacity int64, rate time.Duration, clock l.Clock, epsilon float64) []l.Limiter {
-	var limiters []l.Limiter
+func (s *LimitersTestSuite) TestLimitContextCancelled() {
+	clock := newFakeClock()
+	capacity := int64(2)
+	rate := time.Second
+	var limiters []interface{}
 	for _, b := range s.tokenBuckets(capacity, rate, clock) {
 		limiters = append(limiters, b)
 	}
@@ -99,31 +102,49 @@ func (s *LimitersTestSuite) limiters(capacity int64, rate time.Duration, clock l
 	for _, w := range s.fixedWindows(capacity, rate, clock) {
 		limiters = append(limiters, w)
 	}
-	for _, w := range s.slidingWindows(capacity, rate, clock, epsilon) {
+	for _, w := range s.slidingWindows(capacity, rate, clock, 1e-9) {
 		limiters = append(limiters, w)
 	}
-	return limiters
-}
+	for _, b := range s.concurrentBuffers(capacity, rate, clock) {
+		limiters = append(limiters, b)
+	}
+	type rateLimiter interface {
+		Limit(context.Context) (time.Duration, error)
+	}
+	type concurrentLimiter interface {
+		Limit(context.Context, string) error
+	}
 
-func (s *LimitersTestSuite) TestLimitContextCancelled() {
-	clock := newFakeClock()
-	for _, limiter := range s.limiters(2, time.Second, clock, 1e-9) {
+	for _, limiter := range limiters {
 		done1 := make(chan struct{})
-		go func(limiter l.Limiter) {
+		go func(limiter interface{}) {
 			defer close(done1)
 			// The context is expired shortly after it is created.
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
-			_, err := limiter.Limit(ctx)
-			s.Error(err, "%T", limiter)
+			switch lim := limiter.(type) {
+			case rateLimiter:
+				_, err := lim.Limit(ctx)
+				s.Error(err, "%T", limiter)
+
+			case concurrentLimiter:
+				s.Error(lim.Limit(ctx, "key"), "%T", limiter)
+			}
+
 		}(limiter)
 		done2 := make(chan struct{})
-		go func(limiter l.Limiter) {
+		go func(limiter interface{}) {
 			defer close(done2)
 			<-done1
 			ctx := context.Background()
-			_, err := limiter.Limit(ctx)
-			s.NoError(err, "%T", limiter)
+			switch lim := limiter.(type) {
+			case rateLimiter:
+				_, err := lim.Limit(ctx)
+				s.NoError(err, "%T", limiter)
+
+			case concurrentLimiter:
+				s.NoError(lim.Limit(ctx, "key"), "%T", limiter)
+			}
 		}(limiter)
 		// Verify that the second go routine succeeded calling the Limit() method.
 		<-done2

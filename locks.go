@@ -53,7 +53,6 @@ func NewLockerEtcd(cli *clientv3.Client, prefix string, logger Logger) *LockerEt
 }
 
 // Lock creates a new session-based lock in etcd and locks it.
-// The returned fencing token is the corresponding lease's ID.
 func (l *LockerEtcd) Lock(ctx context.Context) error {
 	var err error
 	l.session, err = concurrency.NewSession(l.cli, concurrency.WithTTL(1))

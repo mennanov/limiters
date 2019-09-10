@@ -37,10 +37,10 @@ type TokenBucketStateBackend interface {
 
 // TokenBucket implements the https://en.wikipedia.org/wiki/Token_bucket algorithm.
 type TokenBucket struct {
-	Locker
-	TokenBucketStateBackend
-	Clock
-	Logger
+	locker  Locker
+	backend TokenBucketStateBackend
+	clock   Clock
+	logger  Logger
 	// refillRate is the tokens refill rate.
 	refillRate time.Duration
 	// capacity is the bucket's capacity.
@@ -51,12 +51,12 @@ type TokenBucket struct {
 // NewTokenBucket creates a new instance of TokenBucket.
 func NewTokenBucket(capacity int64, refillRate time.Duration, locker Locker, tokenBucketStateBackend TokenBucketStateBackend, clock Clock, logger Logger) *TokenBucket {
 	return &TokenBucket{
-		Locker:                  locker,
-		TokenBucketStateBackend: tokenBucketStateBackend,
-		Clock:                   clock,
-		Logger:                  logger,
-		refillRate:              refillRate,
-		capacity:                capacity,
+		locker:     locker,
+		backend:    tokenBucketStateBackend,
+		clock:      clock,
+		logger:     logger,
+		refillRate: refillRate,
+		capacity:   capacity,
 	}
 }
 
@@ -67,18 +67,18 @@ func NewTokenBucket(capacity int64, refillRate time.Duration, locker Locker, tok
 // It returns ErrLimitExhausted if the amount of available tokens is less than requested. In this case the returned
 // duration is the amount of time to wait to retry the request.
 func (t *TokenBucket) Take(ctx context.Context, tokens int64) (time.Duration, error) {
-	now := t.Clock.Now().UnixNano()
+	now := t.clock.Now().UnixNano()
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if err := t.Lock(ctx); err != nil {
+	if err := t.locker.Lock(ctx); err != nil {
 		return 0, err
 	}
 	defer func() {
-		if err := t.Unlock(); err != nil {
-			t.Logger.Log(err)
+		if err := t.locker.Unlock(); err != nil {
+			t.logger.Log(err)
 		}
 	}()
-	state, err := t.TokenBucketStateBackend.State(ctx)
+	state, err := t.backend.State(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -102,7 +102,7 @@ func (t *TokenBucket) Take(ctx context.Context, tokens int64) (time.Duration, er
 	}
 	// Take the tokens from the bucket.
 	state.Available -= tokens
-	if err := t.SetState(ctx, state); err != nil {
+	if err := t.backend.SetState(ctx, state); err != nil {
 		return 0, err
 	}
 	return 0, nil
@@ -174,7 +174,7 @@ type TokenBucketEtcd struct {
 // the TTL expires.
 //
 // If raceCheck is true and the keys in etcd are modified in between State() and SetState() calls then
-// ErrStateRaceCondition is returned.
+// ErrRaceCondition is returned.
 // It does not add any significant overhead as it can be trivially checked on etcd side before updating the keys.
 func NewTokenBucketEtcd(cli *clientv3.Client, prefix string, ttl time.Duration, raceCheck bool) *TokenBucketEtcd {
 	return &TokenBucketEtcd{
@@ -290,7 +290,7 @@ func (t *TokenBucketEtcd) save(ctx context.Context, state TokenBucketState) erro
 	if !r.Succeeded {
 		return nil
 	}
-	return ErrStateRaceCondition
+	return ErrRaceCondition
 }
 
 // SetState updates the state of the bucket.
@@ -346,7 +346,7 @@ type TokenBucketRedis struct {
 // TTL is the TTL of the stored keys.
 //
 // If raceCheck is true and the keys in Redis are modified in between State() and SetState() calls then
-// ErrStateRaceCondition is returned.
+// ErrRaceCondition is returned.
 // This adds an extra overhead since a Lua script has to be executed on the Redis side which locks the entire database.
 func NewTokenBucketRedis(cli *redis.Client, prefix string, ttl time.Duration, raceCheck bool) *TokenBucketRedis {
 	return &TokenBucketRedis{cli: cli, prefix: prefix, ttl: ttl, raceCheck: raceCheck}
@@ -427,6 +427,7 @@ func (t *TokenBucketRedis) SetState(ctx context.Context, state TokenBucketState)
 			return
 		}
 		var result interface{}
+		// TODO: make use of EVALSHA.
 		result, err = t.cli.Eval(`
 	local version = tonumber(redis.call('get', KEYS[1])) or 0
 	if version > tonumber(ARGV[1]) then

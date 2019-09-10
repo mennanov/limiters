@@ -25,8 +25,8 @@ type SlidingWindowIncrementer interface {
 // in case when a client is flooding the service with requests.
 // It's the client's responsibility to handle the disallowed request and wait before making a new request again.
 type SlidingWindow struct {
-	SlidingWindowIncrementer
-	Clock
+	backend SlidingWindowIncrementer
+	clock Clock
 	rate     time.Duration
 	capacity int64
 	epsilon  float64
@@ -37,17 +37,17 @@ type SlidingWindow struct {
 // Rate is the window size.
 // Epsilon is the max-allowed range of difference when comparing the current weighted number of requests with capacity.
 func NewSlidingWindow(capacity int64, rate time.Duration, slidingWindowIncrementer SlidingWindowIncrementer, clock Clock, epsilon float64) *SlidingWindow {
-	return &SlidingWindow{SlidingWindowIncrementer: slidingWindowIncrementer, Clock: clock, rate: rate, capacity: capacity, epsilon: epsilon}
+	return &SlidingWindow{backend: slidingWindowIncrementer, clock: clock, rate: rate, capacity: capacity, epsilon: epsilon}
 }
 
 // Limit returns the time duration to wait before the request can be processed.
 // It returns ErrLimitExhausted if the request overflows the capacity.
 func (s *SlidingWindow) Limit(ctx context.Context) (time.Duration, error) {
-	now := s.Now()
+	now := s.clock.Now()
 	currWindow := now.Truncate(s.rate)
 	prevWindow := currWindow.Add(-s.rate)
 	ttl := s.rate - now.Sub(currWindow)
-	prev, curr, err := s.Increment(ctx, prevWindow, currWindow, ttl+s.rate)
+	prev, curr, err := s.backend.Increment(ctx, prevWindow, currWindow, ttl+s.rate)
 	if err != nil {
 		return 0, err
 	}

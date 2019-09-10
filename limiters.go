@@ -2,7 +2,6 @@
 package limiters
 
 import (
-	"context"
 	"errors"
 	"log"
 	"time"
@@ -12,16 +11,9 @@ var (
 	// ErrLimitExhausted is returned by the Limiter in case the number of requests overflows the capacity of a Limiter.
 	ErrLimitExhausted = errors.New("requests limit exhausted")
 
-	// ErrStateRaceCondition is returned when there is a race condition while saving a state of a rate limiter.
-	ErrStateRaceCondition = errors.New("race condition detected")
+	// ErrRaceCondition is returned when there is a race condition while saving a state of a rate limiter.
+	ErrRaceCondition = errors.New("race condition detected")
 )
-
-// Limiter is the interface that wraps the Limit method.
-type Limiter interface {
-	// Limit returns the time duration to wait before processing the request.
-	// It returns ErrLimitExhausted if the request overflows the Limiter's capacity.
-	Limit(context.Context) (time.Duration, error)
-}
 
 // Logger wraps the Log method for logging.
 type Logger interface {

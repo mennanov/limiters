@@ -35,10 +35,10 @@ type LeakyBucketStateBackend interface {
 
 // LeakyBucket implements the https://en.wikipedia.org/wiki/Leaky_bucket#As_a_queue algorithm.
 type LeakyBucket struct {
-	Locker
-	LeakyBucketStateBackend
-	Clock
-	Logger
+	locker  Locker
+	backend LeakyBucketStateBackend
+	clock   Clock
+	logger  Logger
 	// Capacity is the maximum allowed number of tockens in the bucket.
 	capacity int64
 	// Rate is the output rate: 1 request per the rate duration (in nanoseconds).
@@ -49,12 +49,12 @@ type LeakyBucket struct {
 // NewLeakyBucket creates a new instance of LeakyBucket.
 func NewLeakyBucket(capacity int64, rate time.Duration, locker Locker, leakyBucketStateBackend LeakyBucketStateBackend, clock Clock, logger Logger) *LeakyBucket {
 	return &LeakyBucket{
-		Locker:                  locker,
-		LeakyBucketStateBackend: leakyBucketStateBackend,
-		Clock:                   clock,
-		Logger:                  logger,
-		capacity:                capacity,
-		rate:                    int64(rate),
+		locker:   locker,
+		backend:  leakyBucketStateBackend,
+		clock:    clock,
+		logger:   logger,
+		capacity: capacity,
+		rate:     int64(rate),
 	}
 }
 
@@ -63,18 +63,18 @@ func NewLeakyBucket(capacity int64, rate time.Duration, locker Locker, leakyBuck
 // It returns ErrLimitExhausted if the the request overflows the bucket's capacity. In this case the returned duration
 // means how long it would have taken to wait for the request to be processed if the bucket was not overflowed.
 func (t *LeakyBucket) Limit(ctx context.Context) (time.Duration, error) {
-	now := t.Clock.Now().UnixNano()
+	now := t.clock.Now().UnixNano()
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if err := t.Lock(ctx); err != nil {
+	if err := t.locker.Lock(ctx); err != nil {
 		return 0, err
 	}
 	defer func() {
-		if err := t.Unlock(); err != nil {
-			t.Logger.Log(err)
+		if err := t.locker.Unlock(); err != nil {
+			t.logger.Log(err)
 		}
 	}()
-	state, err := t.State(ctx)
+	state, err := t.backend.State(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -96,7 +96,7 @@ func (t *LeakyBucket) Limit(ctx context.Context) (time.Duration, error) {
 	if wait/t.rate > t.capacity {
 		return time.Duration(wait), ErrLimitExhausted
 	}
-	if err := t.SetState(ctx, state); err != nil {
+	if err := t.backend.SetState(ctx, state); err != nil {
 		return 0, err
 	}
 	return time.Duration(wait), nil
@@ -145,7 +145,7 @@ type LeakyBucketEtcd struct {
 // TTL is a TTL of the etcd lease used to store all the keys.
 //
 // If raceCheck is true and the keys in etcd are modified in between State() and SetState() calls then
-// ErrStateRaceCondition is returned.
+// ErrRaceCondition is returned.
 func NewLeakyBucketEtcd(cli *clientv3.Client, prefix string, ttl time.Duration, raceCheck bool) *LeakyBucketEtcd {
 	return &LeakyBucketEtcd{
 		prefix:    prefix,
@@ -231,7 +231,7 @@ func (l *LeakyBucketEtcd) save(ctx context.Context, state LeakyBucketState) erro
 	if !r.Succeeded {
 		return nil
 	}
-	return ErrStateRaceCondition
+	return ErrRaceCondition
 }
 
 // SetState updates the state of the bucket in etcd.
@@ -276,7 +276,7 @@ type LeakyBucketRedis struct {
 // TTL is the TTL of the stored keys.
 //
 // If raceCheck is true and the keys in Redis are modified in between State() and SetState() calls then
-// ErrStateRaceCondition is returned.
+// ErrRaceCondition is returned.
 func NewLeakyBucketRedis(cli *redis.Client, prefix string, ttl time.Duration, raceCheck bool) *LeakyBucketRedis {
 	return &LeakyBucketRedis{cli: cli, prefix: prefix, ttl: ttl, raceCheck: raceCheck}
 }
@@ -336,7 +336,7 @@ func (t *LeakyBucketRedis) State(ctx context.Context) (LeakyBucketState, error) 
 
 func checkResponseFromRedis(response interface{}, expected interface{}) error {
 	if s, sok := response.(string); sok && s == "RACE_CONDITION" {
-		return ErrStateRaceCondition
+		return ErrRaceCondition
 	}
 	if !reflect.DeepEqual(response, expected) {
 		return errors.Errorf("got %+v from redis, expected %+v", response, expected)
@@ -356,6 +356,7 @@ func (t *LeakyBucketRedis) SetState(ctx context.Context, state LeakyBucketState)
 			return
 		}
 		var result interface{}
+		// TODO: make use of EVALSHA.
 		result, err = t.cli.Eval(`
 	local version = tonumber(redis.call('get', KEYS[1])) or 0
 	if version > tonumber(ARGV[1]) then

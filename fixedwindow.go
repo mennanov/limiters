@@ -22,8 +22,8 @@ type FixedWindowIncrementer interface {
 // Simple and memory efficient algorithm that does not need a distributed lock.
 // However it may be lenient when there are many requests around the boundary between 2 adjacent windows.
 type FixedWindow struct {
-	FixedWindowIncrementer
-	Clock
+	backend  FixedWindowIncrementer
+	clock    Clock
 	rate     time.Duration
 	capacity int64
 	mu       sync.Mutex
@@ -35,7 +35,7 @@ type FixedWindow struct {
 // Capacity is the maximum amount of requests allowed per window.
 // Rate is the window size.
 func NewFixedWindow(capacity int64, rate time.Duration, fixedWindowIncrementer FixedWindowIncrementer, clock Clock) *FixedWindow {
-	return &FixedWindow{FixedWindowIncrementer: fixedWindowIncrementer, Clock: clock, rate: rate, capacity: capacity}
+	return &FixedWindow{backend: fixedWindowIncrementer, clock: clock, rate: rate, capacity: capacity}
 }
 
 // Limit returns the time duration to wait before the request can be processed.
@@ -43,7 +43,7 @@ func NewFixedWindow(capacity int64, rate time.Duration, fixedWindowIncrementer F
 func (f *FixedWindow) Limit(ctx context.Context) (time.Duration, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	now := f.Now()
+	now := f.clock.Now()
 	window := now.Truncate(f.rate)
 	if f.window != window {
 		f.window = window
@@ -54,7 +54,7 @@ func (f *FixedWindow) Limit(ctx context.Context) (time.Duration, error) {
 		// If the window is already overflowed don't increment the counter.
 		return ttl, ErrLimitExhausted
 	}
-	c, err := f.Increment(ctx, window, ttl)
+	c, err := f.backend.Increment(ctx, window, ttl)
 	if err != nil {
 		return 0, err
 	}
