@@ -71,7 +71,7 @@ func Example_ipGRPCLimiter() {
 			}
 
 			// Create an IP address based rate limiter.
-			limiter := registry.GetOrCreate(ip, func() limiters.Limiter {
+			bucket := registry.GetOrCreate(ip, func() interface{} {
 				return limiters.NewTokenBucket(
 					2,
 					rate,
@@ -79,10 +79,10 @@ func Example_ipGRPCLimiter() {
 					limiters.NewTokenBucketRedis(
 						redisClient,
 						fmt.Sprintf("/ratelimiter/ip/%s", ip),
-						rate),
+						rate, false),
 					clock, logger)
 			}, rate, clock.Now())
-			w, err := limiter.Limit(ctx)
+			w, err := bucket.(*limiters.TokenBucket).Limit(ctx)
 			if err == limiters.ErrLimitExhausted {
 				return nil, status.Errorf(codes.ResourceExhausted, "try again later in %s", w)
 			} else if err != nil {

@@ -18,7 +18,7 @@ steps:
       ETCD_ENDPOINTS: "etcd:2379"
       REDIS_ADDR: "redis:6379"
     commands:
-      - go test -race -v -coverprofile=coverage.txt -covermode=atomic
+      - go test -race -v -coverprofile=coverage.txt -covermode=atomic ./...
 
   - name: coverage
     image: plugins/codecov
@@ -49,7 +49,7 @@ steps:
       ETCD_ENDPOINTS: "etcd:2379"
       REDIS_ADDR: "redis:6379"
     commands:
-      - go test -race -v
+      - go test -race -v ./...
 
 ---
 kind: pipeline
@@ -72,7 +72,7 @@ steps:
       ETCD_ENDPOINTS: "etcd:2379"
       REDIS_ADDR: "redis:6379"
     commands:
-      - go test -race -v
+      - go test -race -v ./...
 
 ---
 kind: pipeline

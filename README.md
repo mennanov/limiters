@@ -39,27 +39,31 @@
     It will disallow _all_ the requests in case when a client is flooding the service with requests.
     It's the client's responsibility to handle a disallowed request properly: wait before making a new one again.
 
-- [`Sliding window log`](https://konghq.com/blog/how-to-design-a-scalable-rate-limiting-algorithm/)
-(work in progress)
+- `Concurrent buffer`
+    - in-memory (local)
+    - redis
+    
+    Allows concurrent requests up to the given capacity.  
+    Requires a lock (provided).
 
 ## gRPC example
 
 Global token bucket rate limiter for a gRPC service example:
 ```go
+// examples/example_grpc_simple_limiter_test.go
+rate := time.Second * 3
 limiter := limiters.NewTokenBucket(
-    limiters.NewLockerEtcd(etcdClient, "/ratelimiter_lock/", logger),
+    2,
+    rate,
+    limiters.NewLockerEtcd(etcdClient, "/ratelimiter_lock/simple/", limiters.NewStdLogger()),
     limiters.NewTokenBucketRedis(
         redisClient,
-        "ratelimiter",
-        // Allowance: 1 request per 3 seconds with the burst of size 2.
-        limiters.TokenBucketState{
-            RefillRate: rate,
-            Capacity:   2,
-            Available:  2,
-        },
-        time.Second * 3),
+        "ratelimiter/simple",
+        rate, false),
     limiters.NewSystemClock(), limiters.NewStdLogger(),
 )
+
+// Add a unary interceptor middleware to rate limit all requests.
 s := grpc.NewServer(grpc.UnaryInterceptor(
     func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
         w, err := limiter.Limit(ctx)

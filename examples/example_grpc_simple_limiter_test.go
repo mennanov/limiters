@@ -50,7 +50,7 @@ func Example_simpleGRPCLimiter() {
 		limiters.NewTokenBucketRedis(
 			redisClient,
 			"ratelimiter/simple",
-			rate),
+			rate, false),
 		limiters.NewSystemClock(), limiters.NewStdLogger(),
 	)
 
