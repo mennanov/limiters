@@ -7,10 +7,6 @@ service Greeter {
     // Sends a greeting
     rpc SayHello (HelloRequest) returns (HelloReply) {
     }
-
-    // Says goodbye.
-    rpc SayGoodbye (GoodbyeRequest) returns (GoodbyeReply) {
-    }
 }
 
 // The request message containing the user's name.

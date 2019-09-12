@@ -37,7 +37,7 @@ type TokenBucketStateBackend interface {
 
 // TokenBucket implements the https://en.wikipedia.org/wiki/Token_bucket algorithm.
 type TokenBucket struct {
-	locker  Locker
+	locker  DistLocker
 	backend TokenBucketStateBackend
 	clock   Clock
 	logger  Logger
@@ -49,7 +49,7 @@ type TokenBucket struct {
 }
 
 // NewTokenBucket creates a new instance of TokenBucket.
-func NewTokenBucket(capacity int64, refillRate time.Duration, locker Locker, tokenBucketStateBackend TokenBucketStateBackend, clock Clock, logger Logger) *TokenBucket {
+func NewTokenBucket(capacity int64, refillRate time.Duration, locker DistLocker, tokenBucketStateBackend TokenBucketStateBackend, clock Clock, logger Logger) *TokenBucket {
 	return &TokenBucket{
 		locker:     locker,
 		backend:    tokenBucketStateBackend,

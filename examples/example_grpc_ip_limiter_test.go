@@ -75,7 +75,7 @@ func Example_ipGRPCLimiter() {
 				return limiters.NewTokenBucket(
 					2,
 					rate,
-					limiters.NewLockerEtcd(etcdClient, fmt.Sprintf("/lock/ip/%s", ip), logger),
+					limiters.NewLockEtcd(etcdClient, fmt.Sprintf("/lock/ip/%s", ip), logger),
 					limiters.NewTokenBucketRedis(
 						redisClient,
 						fmt.Sprintf("/ratelimiter/ip/%s", ip),

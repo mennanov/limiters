@@ -18,9 +18,4 @@ func (s *server) SayHello(_ context.Context, in *pb.HelloRequest) (*pb.HelloRepl
 	return &pb.HelloReply{Message: "Hello " + in.GetName()}, nil
 }
 
-// SayGoodbye implements helloworld.GreeterServer.
-func (s *server) SayGoodbye(_ context.Context, in *pb.GoodbyeRequest) (*pb.GoodbyeReply, error) {
-	return &pb.GoodbyeReply{Message: "Hello " + in.GetName()}, nil
-}
-
 var _ pb.GreeterServer = new(server)

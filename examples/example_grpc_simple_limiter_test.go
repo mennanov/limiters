@@ -46,7 +46,7 @@ func Example_simpleGRPCLimiter() {
 	limiter := limiters.NewTokenBucket(
 		2,
 		rate,
-		limiters.NewLockerEtcd(etcdClient, "/ratelimiter_lock/simple/", limiters.NewStdLogger()),
+		limiters.NewLockEtcd(etcdClient, "/ratelimiter_lock/simple/", limiters.NewStdLogger()),
 		limiters.NewTokenBucketRedis(
 			redisClient,
 			"ratelimiter/simple",

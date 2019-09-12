@@ -81,10 +81,10 @@ func TestBucketTestSuite(t *testing.T) {
 	suite.Run(t, new(LimitersTestSuite))
 }
 
-func (s *LimitersTestSuite) lockers() []l.Locker {
-	return []l.Locker{
-		l.NewLockerNoop(),
-		l.NewLockerEtcd(s.etcdClient, uuid.New().String(), s.logger),
+func (s *LimitersTestSuite) lockers() []l.DistLocker {
+	return []l.DistLocker{
+		l.NewLockNoop(),
+		l.NewLockEtcd(s.etcdClient, uuid.New().String(), s.logger),
 	}
 }
 

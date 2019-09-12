@@ -35,7 +35,7 @@ type LeakyBucketStateBackend interface {
 
 // LeakyBucket implements the https://en.wikipedia.org/wiki/Leaky_bucket#As_a_queue algorithm.
 type LeakyBucket struct {
-	locker  Locker
+	locker  DistLocker
 	backend LeakyBucketStateBackend
 	clock   Clock
 	logger  Logger
@@ -47,7 +47,7 @@ type LeakyBucket struct {
 }
 
 // NewLeakyBucket creates a new instance of LeakyBucket.
-func NewLeakyBucket(capacity int64, rate time.Duration, locker Locker, leakyBucketStateBackend LeakyBucketStateBackend, clock Clock, logger Logger) *LeakyBucket {
+func NewLeakyBucket(capacity int64, rate time.Duration, locker DistLocker, leakyBucketStateBackend LeakyBucketStateBackend, clock Clock, logger Logger) *LeakyBucket {
 	return &LeakyBucket{
 		locker:   locker,
 		backend:  leakyBucketStateBackend,

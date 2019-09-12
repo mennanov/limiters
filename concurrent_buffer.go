@@ -20,7 +20,7 @@ type ConcurrentBufferBackend interface {
 
 // ConcurrentBuffer implements a limiter that allows concurrent requests up to the given capacity.
 type ConcurrentBuffer struct {
-	locker   Locker
+	locker   DistLocker
 	backend  ConcurrentBufferBackend
 	logger   Logger
 	capacity int64
@@ -28,7 +28,7 @@ type ConcurrentBuffer struct {
 }
 
 // NewConcurrentBuffer creates a new ConcurrentBuffer instance.
-func NewConcurrentBuffer(locker Locker, concurrentStateBackend ConcurrentBufferBackend, capacity int64) *ConcurrentBuffer {
+func NewConcurrentBuffer(locker DistLocker, concurrentStateBackend ConcurrentBufferBackend, capacity int64) *ConcurrentBuffer {
 	return &ConcurrentBuffer{locker: locker, backend: concurrentStateBackend, capacity: capacity}
 }
 
