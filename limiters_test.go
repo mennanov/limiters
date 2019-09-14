@@ -11,6 +11,7 @@ import (
 	"github.com/coreos/etcd/clientv3"
 	"github.com/go-redis/redis"
 	"github.com/google/uuid"
+	"github.com/hashicorp/consul/api"
 	"github.com/stretchr/testify/suite"
 
 	l "github.com/mennanov/limiters"
@@ -54,9 +55,10 @@ func (c *fakeClock) reset() {
 
 type LimitersTestSuite struct {
 	suite.Suite
-	etcdClient  *clientv3.Client
-	redisClient *redis.Client
-	logger      *l.StdLogger
+	etcdClient   *clientv3.Client
+	redisClient  *redis.Client
+	consulClient *api.Client
+	logger       *l.StdLogger
 }
 
 func (s *LimitersTestSuite) SetupSuite() {
@@ -69,6 +71,8 @@ func (s *LimitersTestSuite) SetupSuite() {
 	s.redisClient = redis.NewClient(&redis.Options{
 		Addr: os.Getenv("REDIS_ADDR"),
 	})
+	s.consulClient, err = api.NewClient(api.DefaultConfig())
+	s.Require().NoError(err)
 	s.logger = l.NewStdLogger()
 }
 
@@ -81,10 +85,21 @@ func TestBucketTestSuite(t *testing.T) {
 	suite.Run(t, new(LimitersTestSuite))
 }
 
-func (s *LimitersTestSuite) lockers() []l.DistLocker {
+// lockers returns all possible lockers (including noop).
+func (s *LimitersTestSuite) lockers(key string) []l.DistLocker {
+	return append(s.distLockers(key), l.NewLockNoop())
+}
+
+// distLockers returns distributed lockers only.
+func (s *LimitersTestSuite) distLockers(key string) []l.DistLocker {
+	if key == "" {
+		key = uuid.New().String()
+	}
+	consulLock, err := s.consulClient.LockKey(key)
+	s.Require().NoError(err)
 	return []l.DistLocker{
-		l.NewLockNoop(),
-		l.NewLockEtcd(s.etcdClient, uuid.New().String(), s.logger),
+		l.NewLockEtcd(s.etcdClient, key, s.logger),
+		l.NewLockConsul(consulLock),
 	}
 }
 

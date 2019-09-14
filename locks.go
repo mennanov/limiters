@@ -5,6 +5,7 @@ import (
 
 	"github.com/coreos/etcd/clientv3"
 	"github.com/coreos/etcd/clientv3/concurrency"
+	"github.com/hashicorp/consul/api"
 	"github.com/pkg/errors"
 )
 
@@ -71,4 +72,25 @@ func (l *LockEtcd) Unlock() error {
 		}
 	}()
 	return errors.Wrap(l.mu.Unlock(l.cli.Ctx()), "failed to unlock a mutex in etcd")
+}
+
+// LockConsul is a thin wrapper around github.com/hashicorp/consul/api.Lock that implements the DistLocker interface.
+type LockConsul struct {
+	lock *api.Lock
+}
+
+// NewLockConsul creates a new LockConsul instance.
+func NewLockConsul(lock *api.Lock) *LockConsul {
+	return &LockConsul{lock: lock}
+}
+
+// Lock locks the lock in Consul.
+func (l *LockConsul) Lock(ctx context.Context) error {
+	_, err := l.lock.Lock(ctx.Done())
+	return errors.Wrap(err, "failed to lock a mutex in consul")
+}
+
+// Unlock unlocks the lock in Consul.
+func (l *LockConsul) Unlock() error {
+	return l.lock.Unlock()
 }

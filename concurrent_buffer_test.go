@@ -13,9 +13,9 @@ import (
 
 func (s *LimitersTestSuite) concurrentBuffers(capacity int64, ttl time.Duration, clock l.Clock) []*l.ConcurrentBuffer {
 	var buffers []*l.ConcurrentBuffer
-	for _, locker := range s.lockers() {
+	for _, locker := range s.lockers("") {
 		for _, b := range s.concurrentBufferBackends(ttl, clock) {
-			buffers = append(buffers, l.NewConcurrentBuffer(locker, b, capacity))
+			buffers = append(buffers, l.NewConcurrentBuffer(locker, b, capacity, s.logger))
 		}
 	}
 

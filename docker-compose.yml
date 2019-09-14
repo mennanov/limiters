@@ -14,3 +14,8 @@ services:
       ALLOW_EMPTY_PASSWORD: "yes"
     ports:
       - "6379:6379"
+
+  consul:
+    image: bitnami/consul
+    ports:
+      - "8500:8500"

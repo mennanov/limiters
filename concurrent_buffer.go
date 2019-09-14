@@ -28,8 +28,8 @@ type ConcurrentBuffer struct {
 }
 
 // NewConcurrentBuffer creates a new ConcurrentBuffer instance.
-func NewConcurrentBuffer(locker DistLocker, concurrentStateBackend ConcurrentBufferBackend, capacity int64) *ConcurrentBuffer {
-	return &ConcurrentBuffer{locker: locker, backend: concurrentStateBackend, capacity: capacity}
+func NewConcurrentBuffer(locker DistLocker, concurrentStateBackend ConcurrentBufferBackend, capacity int64, logger Logger) *ConcurrentBuffer {
+	return &ConcurrentBuffer{locker: locker, backend: concurrentStateBackend, capacity: capacity, logger: logger}
 }
 
 // Limit puts the request identified by the key in a buffer.

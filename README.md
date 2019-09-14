@@ -81,6 +81,16 @@ s := grpc.NewServer(grpc.UnaryInterceptor(
 For something close to a real world example see the IP address based gRPC global rate limiter in the 
 [examples](examples/example_grpc_ip_limiter_test.go) directory.
 
+## Distributed locks
+
+Some algorithms require a distributed lock to guarantee consistency during concurrent requests.  
+In case there is only 1 running application instance then no distributed lock is needed 
+as all the algorithms are thread-safe (use `LockNoop`).
+
+Supported backends:
+- [etcd](https://etcd.io/)
+- [Consul](https://www.consul.io/)
+
 ## Testing
 
 Run tests locally:

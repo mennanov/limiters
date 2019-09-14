@@ -19,26 +19,27 @@ func (s *LimitersTestSuite) useLock(lock limiters.DistLocker, shared *int, sleep
 	s.NoError(lock.Unlock())
 }
 
-func (s *LimitersTestSuite) TestLockEtcd() {
-	// Create 2 etcd locks with the same prefix.
-	prefix := "prefix"
-	lock1 := limiters.NewLockEtcd(s.etcdClient, prefix, s.logger)
-	lock2 := limiters.NewLockEtcd(s.etcdClient, prefix, s.logger)
-	var shared int
-	rounds := 6
-	sleep := time.Millisecond * 50
-	for i := 0; i < rounds; i++ {
-		wg := sync.WaitGroup{}
-		wg.Add(2)
-		go func(i int) {
-			defer wg.Done()
-			s.useLock(lock1, &shared, sleep)
-		}(i)
-		go func(i int) {
-			defer wg.Done()
-			s.useLock(lock2, &shared, sleep)
-		}(i)
-		wg.Wait()
+func (s *LimitersTestSuite) TestDistLockers() {
+	key := "prefix"
+	locks1 := s.distLockers(key)
+	locks2 := s.distLockers(key)
+	for k := 0; k < len(locks1); k++ {
+		var shared int
+		rounds := 6
+		sleep := time.Millisecond * 50
+		for i := 0; i < rounds; i++ {
+			wg := sync.WaitGroup{}
+			wg.Add(2)
+			go func(k int) {
+				defer wg.Done()
+				s.useLock(locks1[k], &shared, sleep)
+			}(k)
+			go func(k int) {
+				defer wg.Done()
+				s.useLock(locks2[k], &shared, sleep)
+			}(k)
+			wg.Wait()
+		}
+		s.Equal(rounds*2, shared)
 	}
-	s.Equal(rounds*2, shared)
 }
