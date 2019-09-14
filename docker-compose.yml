@@ -19,3 +19,10 @@ services:
     image: bitnami/consul
     ports:
       - "8500:8500"
+
+  zookeeper:
+    image: bitnami/zookeeper
+    environment:
+      ALLOW_ANONYMOUS_LOGIN: "yes"
+    ports:
+      - "2181:2181"

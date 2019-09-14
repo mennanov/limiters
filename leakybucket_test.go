@@ -13,7 +13,7 @@ import (
 // leakyBuckets returns all the possible leakyBuckets combinations.
 func (s *LimitersTestSuite) leakyBuckets(capacity int64, rate time.Duration, clock l.Clock) []*l.LeakyBucket {
 	var buckets []*l.LeakyBucket
-	for _, locker := range s.lockers("") {
+	for _, locker := range s.lockers(true) {
 		for _, backend := range s.leakyBucketBackends() {
 			buckets = append(buckets, l.NewLeakyBucket(capacity, rate, locker, backend, clock, s.logger))
 		}

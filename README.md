@@ -90,6 +90,7 @@ as all the algorithms are thread-safe (use `LockNoop`).
 Supported backends:
 - [etcd](https://etcd.io/)
 - [Consul](https://www.consul.io/)
+- [Zookeeper](https://zookeeper.apache.org/)
 
 ## Testing
 

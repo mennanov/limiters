@@ -71,7 +71,7 @@ var tokenBucketUniformTestCases = []struct {
 // tokenBuckets returns all the possible TokenBucket combinations.
 func (s *LimitersTestSuite) tokenBuckets(capacity int64, refillRate time.Duration, clock l.Clock) []*l.TokenBucket {
 	var buckets []*l.TokenBucket
-	for _, locker := range s.lockers("") {
+	for _, locker := range s.lockers(true) {
 		for _, backend := range s.tokenBucketBackends() {
 			buckets = append(buckets, l.NewTokenBucket(capacity, refillRate, locker, backend, clock, s.logger))
 		}

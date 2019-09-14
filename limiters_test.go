@@ -12,6 +12,7 @@ import (
 	"github.com/go-redis/redis"
 	"github.com/google/uuid"
 	"github.com/hashicorp/consul/api"
+	"github.com/samuel/go-zookeeper/zk"
 	"github.com/stretchr/testify/suite"
 
 	l "github.com/mennanov/limiters"
@@ -58,6 +59,7 @@ type LimitersTestSuite struct {
 	etcdClient   *clientv3.Client
 	redisClient  *redis.Client
 	consulClient *api.Client
+	zkConn       *zk.Conn
 	logger       *l.StdLogger
 }
 
@@ -71,7 +73,9 @@ func (s *LimitersTestSuite) SetupSuite() {
 	s.redisClient = redis.NewClient(&redis.Options{
 		Addr: os.Getenv("REDIS_ADDR"),
 	})
-	s.consulClient, err = api.NewClient(api.DefaultConfig())
+	s.consulClient, err = api.NewClient(&api.Config{Address: os.Getenv("CONSUL_ADDR")})
+	s.Require().NoError(err)
+	s.zkConn, _, err = zk.Connect(strings.Split(os.Getenv("ZOOKEEPER_ENDPOINTS"), ","), time.Second)
 	s.Require().NoError(err)
 	s.logger = l.NewStdLogger()
 }
@@ -86,20 +90,27 @@ func TestBucketTestSuite(t *testing.T) {
 }
 
 // lockers returns all possible lockers (including noop).
-func (s *LimitersTestSuite) lockers(key string) []l.DistLocker {
-	return append(s.distLockers(key), l.NewLockNoop())
+func (s *LimitersTestSuite) lockers(generateKeys bool) []l.DistLocker {
+	return append(s.distLockers(generateKeys), l.NewLockNoop())
 }
 
 // distLockers returns distributed lockers only.
-func (s *LimitersTestSuite) distLockers(key string) []l.DistLocker {
-	if key == "" {
-		key = uuid.New().String()
+func (s *LimitersTestSuite) distLockers(generateKeys bool) []l.DistLocker {
+	randomKey := uuid.New().String()
+	consulKey := randomKey
+	etcdKey := randomKey
+	zkKey := "/" + randomKey
+	if !generateKeys {
+		consulKey = "dist_locker"
+		etcdKey = "dist_locker"
+		zkKey = "/dist_locker"
 	}
-	consulLock, err := s.consulClient.LockKey(key)
+	consulLock, err := s.consulClient.LockKey(consulKey)
 	s.Require().NoError(err)
 	return []l.DistLocker{
-		l.NewLockEtcd(s.etcdClient, key, s.logger),
+		l.NewLockEtcd(s.etcdClient, etcdKey, s.logger),
 		l.NewLockConsul(consulLock),
+		l.NewLockZookeeper(zk.NewLock(s.zkConn, zkKey, zk.WorldACL(zk.PermAll))),
 	}
 }
 

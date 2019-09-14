@@ -10,6 +10,12 @@ services:
     image: bitnami/redis
     environment:
       ALLOW_EMPTY_PASSWORD: yes
+  - name: consul
+    image: bitnami/consul
+  - name: zookeeper
+    image: bitnami/zookeeper
+    environment:
+      ALLOW_ANONYMOUS_LOGIN: yes
 
 steps:
   - name: test
@@ -17,6 +23,8 @@ steps:
     environment:
       ETCD_ENDPOINTS: "etcd:2379"
       REDIS_ADDR: "redis:6379"
+      CONSUL_ADDR: "consul:8500"
+      ZOOKEEPER_ENDPOINTS: "zookeeper"
     commands:
       - go test -race -v -coverprofile=coverage.txt -covermode=atomic ./...
 
@@ -41,6 +49,12 @@ services:
     image: bitnami/redis
     environment:
       ALLOW_EMPTY_PASSWORD: yes
+  - name: consul
+    image: bitnami/consul
+  - name: zookeeper
+    image: bitnami/zookeeper
+    environment:
+      ALLOW_ANONYMOUS_LOGIN: yes
 
 steps:
   - name: test
@@ -48,6 +62,8 @@ steps:
     environment:
       ETCD_ENDPOINTS: "etcd:2379"
       REDIS_ADDR: "redis:6379"
+      CONSUL_ADDR: "consul:8500"
+      ZOOKEEPER_ENDPOINTS: "zookeeper"
     commands:
       - go test -race -v ./...
 
@@ -64,6 +80,12 @@ services:
     image: bitnami/redis
     environment:
       ALLOW_EMPTY_PASSWORD: yes
+  - name: consul
+    image: bitnami/consul
+  - name: zookeeper
+    image: bitnami/zookeeper
+    environment:
+      ALLOW_ANONYMOUS_LOGIN: yes
 
 steps:
   - name: test
@@ -71,6 +93,8 @@ steps:
     environment:
       ETCD_ENDPOINTS: "etcd:2379"
       REDIS_ADDR: "redis:6379"
+      CONSUL_ADDR: "consul:8500"
+      ZOOKEEPER_ENDPOINTS: "zookeeper"
     commands:
       - go test -race -v ./...
 

@@ -20,9 +20,8 @@ func (s *LimitersTestSuite) useLock(lock limiters.DistLocker, shared *int, sleep
 }
 
 func (s *LimitersTestSuite) TestDistLockers() {
-	key := "prefix"
-	locks1 := s.distLockers(key)
-	locks2 := s.distLockers(key)
+	locks1 := s.distLockers(false)
+	locks2 := s.distLockers(false)
 	for k := 0; k < len(locks1); k++ {
 		var shared int
 		rounds := 6
