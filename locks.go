@@ -112,6 +112,7 @@ func (l *LockZookeeper) Lock(_ context.Context) error {
 	return l.lock.Lock()
 }
 
+// Unlock unlocks the lock in Zookeeper.
 func (l *LockZookeeper) Unlock() error {
 	return l.lock.Unlock()
 }
