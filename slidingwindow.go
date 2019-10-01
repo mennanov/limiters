@@ -25,8 +25,8 @@ type SlidingWindowIncrementer interface {
 // in case when a client is flooding the service with requests.
 // It's the client's responsibility to handle the disallowed request and wait before making a new request again.
 type SlidingWindow struct {
-	backend SlidingWindowIncrementer
-	clock Clock
+	backend  SlidingWindowIncrementer
+	clock    Clock
 	rate     time.Duration
 	capacity int64
 	epsilon  float64
