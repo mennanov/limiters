@@ -1,8 +1,12 @@
-# Distributed rate limiters in Go 
+# Distributed rate limiters for Golang 
 [![Build Status](https://cloud.drone.io/api/badges/mennanov/limiters/status.svg)](https://cloud.drone.io/mennanov/limiters)
 [![codecov](https://codecov.io/gh/mennanov/limiters/branch/master/graph/badge.svg)](https://codecov.io/gh/mennanov/limiters)
 [![Go Report Card](https://goreportcard.com/badge/github.com/mennanov/limiters)](https://goreportcard.com/report/github.com/mennanov/limiters)
 [![GoDoc](https://godoc.org/github.com/mennanov/limiters?status.svg)](https://godoc.org/github.com/mennanov/limiters)
+
+Rate limiters for distributed applications in Golang with configurable back-ends and distributed locks.  
+Any types of back-ends and locks can be used that implement certain minimalistic interfaces. 
+Most common implementations are already provided.  
 
 - [`Token bucket`](https://en.wikipedia.org/wiki/Token_bucket)
     - in-memory (local)
@@ -11,7 +15,7 @@
 
     Allows requests at a certain input rate with possible bursts configured by the capacity parameter.  
     The output rate equals to the input rate.  
-    Precise, but requires a lock (provided).
+    Precise (no over or under-limiting), but requires a lock (provided).
 
 - [`Leaky bucket`](https://en.wikipedia.org/wiki/Leaky_bucket#As_a_queue)
     - in-memory (local)
