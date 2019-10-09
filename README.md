@@ -3,6 +3,7 @@
 [![codecov](https://codecov.io/gh/mennanov/limiters/branch/master/graph/badge.svg?token=LZULu4i7B6)](https://codecov.io/gh/mennanov/limiters)
 [![Go Report Card](https://goreportcard.com/badge/github.com/mennanov/limiters)](https://goreportcard.com/report/github.com/mennanov/limiters)
 [![GoDoc](https://godoc.org/github.com/mennanov/limiters?status.svg)](https://godoc.org/github.com/mennanov/limiters)
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fmennanov%2Flimiters.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2Fmennanov%2Flimiters?ref=badge_shield)
 
 Rate limiters for distributed applications in Golang with configurable back-ends and distributed locks.  
 Any types of back-ends and locks can be used that implement certain minimalistic interfaces. 
@@ -108,3 +109,7 @@ Run [Drone](https://drone.io) CI tests locally:
 ```bash
 for p in "go1.13" "go1.12" "go1.11" "lint"; do drone exec --pipeline=${p}; done
 ```
+
+
+## License
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fmennanov%2Flimiters.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2Fmennanov%2Flimiters?ref=badge_large)
