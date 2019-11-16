@@ -41,7 +41,7 @@ type TokenBucket struct {
 	backend TokenBucketStateBackend
 	clock   Clock
 	logger  Logger
-	// refillRate is the tokens refill rate.
+	// refillRate is the tokens refill rate (1 token per duration).
 	refillRate time.Duration
 	// capacity is the bucket's capacity.
 	capacity int64
@@ -67,7 +67,6 @@ func NewTokenBucket(capacity int64, refillRate time.Duration, locker DistLocker,
 // It returns ErrLimitExhausted if the amount of available tokens is less than requested. In this case the returned
 // duration is the amount of time to wait to retry the request.
 func (t *TokenBucket) Take(ctx context.Context, tokens int64) (time.Duration, error) {
-	now := t.clock.Now().UnixNano()
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if err := t.locker.Lock(ctx); err != nil {
@@ -86,6 +85,7 @@ func (t *TokenBucket) Take(ctx context.Context, tokens int64) (time.Duration, er
 		// Initially the bucket is full.
 		state.Available = t.capacity
 	}
+	now := t.clock.Now().UnixNano()
 	// Refill the bucket.
 	tokensToAdd := (now - state.Last) / int64(t.refillRate)
 	if tokensToAdd > 0 {
@@ -102,7 +102,7 @@ func (t *TokenBucket) Take(ctx context.Context, tokens int64) (time.Duration, er
 	}
 	// Take the tokens from the bucket.
 	state.Available -= tokens
-	if err := t.backend.SetState(ctx, state); err != nil {
+	if err = t.backend.SetState(ctx, state); err != nil {
 		return 0, err
 	}
 	return 0, nil
@@ -219,10 +219,11 @@ func (t *TokenBucketEtcd) State(ctx context.Context) (TokenBucketState, error) {
 	}
 	state := TokenBucketState{}
 	parsed := 0
+	var v int64
 	for _, kv := range r.Kvs {
 		switch string(kv.Key) {
 		case etcdKey(t.prefix, etcdKeyTBAvailable):
-			v, err := parseEtcdInt64(kv)
+			v, err = parseEtcdInt64(kv)
 			if err != nil {
 				return TokenBucketState{}, err
 			}
@@ -230,7 +231,7 @@ func (t *TokenBucketEtcd) State(ctx context.Context) (TokenBucketState, error) {
 			parsed |= 1
 
 		case etcdKey(t.prefix, etcdKeyTBLast):
-			v, err := parseEtcdInt64(kv)
+			v, err = parseEtcdInt64(kv)
 			if err != nil {
 				return TokenBucketState{}, err
 			}
@@ -239,7 +240,7 @@ func (t *TokenBucketEtcd) State(ctx context.Context) (TokenBucketState, error) {
 			t.lastVersion = kv.Version
 
 		case etcdKey(t.prefix, etcdKeyTBLease):
-			v, err := parseEtcdInt64(kv)
+			v, err = parseEtcdInt64(kv)
 			if err != nil {
 				return TokenBucketState{}, err
 			}
@@ -306,7 +307,7 @@ func (t *TokenBucketEtcd) SetState(ctx context.Context, state TokenBucketState) 
 	// Send the KeepAlive request to extend the existing lease.
 	if _, err := t.cli.KeepAliveOnce(ctx, t.leaseID); err == rpctypes.ErrLeaseNotFound {
 		// Create a new lease since the current one has expired.
-		if err := t.createLease(ctx); err != nil {
+		if err = t.createLease(ctx); err != nil {
 			return err
 		}
 	} else if err != nil {
@@ -419,7 +420,7 @@ func (t *TokenBucketRedis) SetState(ctx context.Context, state TokenBucketState)
 		defer close(done)
 		if !t.raceCheck {
 			_, err = t.cli.TxPipelined(func(pipeliner redis.Pipeliner) error {
-				if err := pipeliner.Set(redisKey(t.prefix, redisKeyTBLast), state.Last, t.ttl).Err(); err != nil {
+				if err = pipeliner.Set(redisKey(t.prefix, redisKeyTBLast), state.Last, t.ttl).Err(); err != nil {
 					return err
 				}
 				return pipeliner.Set(redisKey(t.prefix, redisKeyTBAvailable), state.Available, t.ttl).Err()
@@ -427,7 +428,7 @@ func (t *TokenBucketRedis) SetState(ctx context.Context, state TokenBucketState)
 			return
 		}
 		var result interface{}
-		// TODO: make use of EVALSHA.
+		// TODO: use EVALSHA.
 		result, err = t.cli.Eval(`
 	local version = tonumber(redis.call('get', KEYS[1])) or 0
 	if version > tonumber(ARGV[1]) then

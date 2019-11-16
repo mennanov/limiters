@@ -63,7 +63,6 @@ func NewLeakyBucket(capacity int64, rate time.Duration, locker DistLocker, leaky
 // It returns ErrLimitExhausted if the the request overflows the bucket's capacity. In this case the returned duration
 // means how long it would have taken to wait for the request to be processed if the bucket was not overflowed.
 func (t *LeakyBucket) Limit(ctx context.Context) (time.Duration, error) {
-	now := t.clock.Now().UnixNano()
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if err := t.locker.Lock(ctx); err != nil {
@@ -78,6 +77,7 @@ func (t *LeakyBucket) Limit(ctx context.Context) (time.Duration, error) {
 	if err != nil {
 		return 0, err
 	}
+	now := t.clock.Now().UnixNano()
 	if now < state.Last {
 		// The queue has requests in it: move the current request to the last position + 1.
 		state.Last += t.rate
@@ -96,7 +96,7 @@ func (t *LeakyBucket) Limit(ctx context.Context) (time.Duration, error) {
 	if wait/t.rate > t.capacity {
 		return time.Duration(wait), ErrLimitExhausted
 	}
-	if err := t.backend.SetState(ctx, state); err != nil {
+	if err = t.backend.SetState(ctx, state); err != nil {
 		return 0, err
 	}
 	return time.Duration(wait), nil
@@ -170,10 +170,11 @@ func (l *LeakyBucketEtcd) State(ctx context.Context) (LeakyBucketState, error) {
 	}
 	state := LeakyBucketState{}
 	parsed := 0
+	var v int64
 	for _, kv := range r.Kvs {
 		switch string(kv.Key) {
 		case etcdKey(l.prefix, etcdKeyLBLast):
-			v, err := parseEtcdInt64(kv)
+			v, err = parseEtcdInt64(kv)
 			if err != nil {
 				return LeakyBucketState{}, err
 			}
@@ -182,7 +183,7 @@ func (l *LeakyBucketEtcd) State(ctx context.Context) (LeakyBucketState, error) {
 			l.lastVersion = kv.Version
 
 		case etcdKey(l.prefix, etcdKeyLBLease):
-			v, err := parseEtcdInt64(kv)
+			v, err = parseEtcdInt64(kv)
 			if err != nil {
 				return LeakyBucketState{}, err
 			}
@@ -247,7 +248,7 @@ func (l *LeakyBucketEtcd) SetState(ctx context.Context, state LeakyBucketState) 
 	// Send the KeepAlive request to extend the existing lease.
 	if _, err := l.cli.KeepAliveOnce(ctx, l.leaseID); err == rpctypes.ErrLeaseNotFound {
 		// Create a new lease since the current one has expired.
-		if err := l.createLease(ctx); err != nil {
+		if err = l.createLease(ctx); err != nil {
 			return err
 		}
 	} else if err != nil {

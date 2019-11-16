@@ -12,7 +12,7 @@ import (
 
 // ConcurrentBufferBackend wraps the Add and Remove methods.
 type ConcurrentBufferBackend interface {
-	// Adds the request with the given key to the buffer and returns the total number of requests in it.
+	// Add adds the request with the given key to the buffer and returns the total number of requests in it.
 	Add(ctx context.Context, key string) (int64, error)
 	// Remove removes the request from the buffer.
 	Remove(key string) error
@@ -51,7 +51,7 @@ func (c *ConcurrentBuffer) Limit(ctx context.Context, key string) error {
 	}
 	if counter > c.capacity {
 		// Rollback the Add() operation.
-		if err := c.backend.Remove(key); err != nil {
+		if err = c.backend.Remove(key); err != nil {
 			c.logger.Log(err)
 		}
 		return ErrLimitExhausted

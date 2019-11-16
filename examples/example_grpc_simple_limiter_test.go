@@ -71,7 +71,7 @@ func Example_simpleGRPCLimiter() {
 	pb.RegisterGreeterServer(s, &server{})
 	go func() {
 		// Start serving.
-		if err := s.Serve(lis); err != nil {
+		if err = s.Serve(lis); err != nil {
 			log.Fatalf("failed to serve: %v", err)
 		}
 	}()

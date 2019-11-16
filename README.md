@@ -101,7 +101,7 @@ Supported backends:
 Run tests locally:
 ```bash
 docker-compose up -d  # start etcd and Redis
-ETCD_ENDPOINTS="127.0.0.1:2379" REDIS_ADDR="127.0.0.1:6379" go test
+ETCD_ENDPOINTS="127.0.0.1:2379" REDIS_ADDR="127.0.0.1:6379" ZOOKEEPER_ENDPOINTS="127.0.0.1" CONSUL_ADDR="127.0.0.1:8500" go test -race -v 
 ```
 
 Run [Drone](https://drone.io) CI tests locally:

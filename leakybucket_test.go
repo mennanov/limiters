@@ -37,7 +37,6 @@ func (s *LimitersTestSuite) TestLeakyBucketRealClock() {
 	clock := l.NewSystemClock()
 	for _, requestRate := range []time.Duration{rate / 2} {
 		for _, bucket := range s.leakyBuckets(capacity, rate, clock) {
-			//start := clock.Now()
 			wg := sync.WaitGroup{}
 			mu := sync.Mutex{}
 			var totalWait time.Duration
@@ -67,7 +66,7 @@ func (s *LimitersTestSuite) TestLeakyBucketRealClock() {
 
 			// Allow 5ms lag for each request.
 			// TODO: figure out if this is enough for slow PCs and possibly avoid hard-coding it.
-			delta := float64(time.Duration(capacity) * time.Millisecond * 20)
+			delta := float64(time.Duration(capacity) * time.Millisecond * 25)
 			s.InDelta(expectedWait, totalWait, delta, "request rate: %d, bucket: %v", requestRate, bucket)
 		}
 	}

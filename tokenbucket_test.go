@@ -60,10 +60,10 @@ var tokenBucketUniformTestCases = []struct {
 	},
 	{
 		1,
-		time.Millisecond * 20,
-		20,
-		time.Millisecond * 10,
+		time.Millisecond * 200,
 		10,
+		time.Millisecond * 100,
+		5,
 		2,
 	},
 }
