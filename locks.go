@@ -3,11 +3,11 @@ package limiters
 import (
 	"context"
 
-	"github.com/coreos/etcd/clientv3"
-	"github.com/coreos/etcd/clientv3/concurrency"
 	"github.com/hashicorp/consul/api"
 	"github.com/pkg/errors"
 	"github.com/samuel/go-zookeeper/zk"
+	"go.etcd.io/etcd/client/v3"
+	"go.etcd.io/etcd/client/v3/concurrency"
 )
 
 // DistLocker is a context aware distributed locker (interface is similar to sync.Locker).

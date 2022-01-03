@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/coreos/etcd/clientv3"
 	"github.com/go-redis/redis"
 	"github.com/google/uuid"
 	"github.com/hashicorp/consul/api"
 	"github.com/samuel/go-zookeeper/zk"
 	"github.com/stretchr/testify/suite"
+	"go.etcd.io/etcd/client/v3"
 
 	l "github.com/mennanov/limiters"
 )
