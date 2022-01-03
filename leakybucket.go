@@ -8,10 +8,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/coreos/etcd/clientv3"
-	"github.com/coreos/etcd/etcdserver/api/v3rpc/rpctypes"
 	"github.com/go-redis/redis"
 	"github.com/pkg/errors"
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+	"go.etcd.io/etcd/client/v3"
 )
 
 // LeakyBucketState represents the state of a LeakyBucket.
