@@ -1,0 +1,21 @@
+name: Tests coverage
+
+on: [ "push", "pull_request" ]
+
+jobs:
+
+  build:
+    name: Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Go 1.20
+        uses: actions/setup-go@v3
+        with:
+          go-version: '1.20'
+      - name: Run tests with coverage
+        run: go test -v -coverprofile=coverage.txt -covermode=atomic ./...
+      - uses: codecov/codecov-action@v3
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          verbose: true
