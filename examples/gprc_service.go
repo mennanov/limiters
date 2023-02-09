@@ -2,7 +2,6 @@ package examples
 
 import (
 	"context"
-
 	pb "github.com/mennanov/limiters/examples/helloworld"
 )
 
@@ -11,7 +10,9 @@ const (
 )
 
 // server is used to implement helloworld.GreeterServer.
-type server struct{}
+type server struct {
+	pb.UnimplementedGreeterServer
+}
 
 // SayHello implements helloworld.GreeterServer.
 func (s *server) SayHello(_ context.Context, in *pb.HelloRequest) (*pb.HelloReply, error) {
