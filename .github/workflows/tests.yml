@@ -47,4 +47,8 @@ jobs:
           REDIS_ADDR: 'localhost:6379'
           CONSUL_ADDR: 'localhost:8500'
           ZOOKEEPER_ENDPOINTS: 'localhost:2181'
-        run: go test -race -v
+        run: go test -race -v -coverprofile=coverage.txt -covermode=atomic ./...
+      - uses: codecov/codecov-action@v3
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          verbose: true
