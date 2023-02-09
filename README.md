@@ -1,6 +1,6 @@
 # Distributed rate limiters for Golang 
-[![Build Status](https://cloud.drone.io/api/badges/mennanov/limiters/status.svg)](https://cloud.drone.io/mennanov/limiters)
-[![codecov](https://codecov.io/gh/mennanov/limiters/branch/master/graph/badge.svg)](https://codecov.io/gh/mennanov/limiters)
+[![Build Status](https://github.com/mennanov/limiters/actions/workflows/tests.yml/badge.svg)](https://github.com/mennanov/limiters/actions/workflows/tests.yml)
+[![codecov](https://codecov.io/gh/mennanov/limiters/branch/master/graph/badge.svg?token=LZULu4i7B6)](https://codecov.io/gh/mennanov/limiters)
 [![Go Report Card](https://goreportcard.com/badge/github.com/mennanov/limiters)](https://goreportcard.com/report/github.com/mennanov/limiters)
 [![GoDoc](https://godoc.org/github.com/mennanov/limiters?status.svg)](https://godoc.org/github.com/mennanov/limiters)
 
