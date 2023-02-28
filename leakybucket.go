@@ -69,7 +69,7 @@ func (t *LeakyBucket) Limit(ctx context.Context) (time.Duration, error) {
 		return 0, err
 	}
 	defer func() {
-		if err := t.locker.Unlock(); err != nil {
+		if err := t.locker.Unlock(ctx); err != nil {
 			t.logger.Log(err)
 		}
 	}()

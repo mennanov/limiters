@@ -73,7 +73,7 @@ func (t *TokenBucket) Take(ctx context.Context, tokens int64) (time.Duration, er
 		return 0, err
 	}
 	defer func() {
-		if err := t.locker.Unlock(); err != nil {
+		if err := t.locker.Unlock(ctx); err != nil {
 			t.logger.Log(err)
 		}
 	}()

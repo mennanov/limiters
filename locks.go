@@ -15,7 +15,7 @@ type DistLocker interface {
 	// Lock locks the locker.
 	Lock(ctx context.Context) error
 	// Unlock unlocks the previously successfully locked lock.
-	Unlock() error
+	Unlock(ctx context.Context) error
 }
 
 // LockNoop is a no-op implementation of the DistLocker interface.
@@ -34,7 +34,7 @@ func (n LockNoop) Lock(ctx context.Context) error {
 }
 
 // Unlock does nothing.
-func (n LockNoop) Unlock() error {
+func (n LockNoop) Unlock(_ context.Context) error {
 	return nil
 }
 
@@ -66,7 +66,7 @@ func (l *LockEtcd) Lock(ctx context.Context) error {
 }
 
 // Unlock unlocks the previously locked lock.
-func (l *LockEtcd) Unlock() error {
+func (l *LockEtcd) Unlock(_ context.Context) error {
 	defer func() {
 		if err := l.session.Close(); err != nil {
 			l.logger.Log(err)
@@ -92,7 +92,7 @@ func (l *LockConsul) Lock(ctx context.Context) error {
 }
 
 // Unlock unlocks the lock in Consul.
-func (l *LockConsul) Unlock() error {
+func (l *LockConsul) Unlock(_ context.Context) error {
 	return l.lock.Unlock()
 }
 
@@ -113,6 +113,6 @@ func (l *LockZookeeper) Lock(_ context.Context) error {
 }
 
 // Unlock unlocks the lock in Zookeeper.
-func (l *LockZookeeper) Unlock() error {
+func (l *LockZookeeper) Unlock(_ context.Context) error {
 	return l.lock.Unlock()
 }
