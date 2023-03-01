@@ -66,13 +66,13 @@ func (l *LockEtcd) Lock(ctx context.Context) error {
 }
 
 // Unlock unlocks the previously locked lock.
-func (l *LockEtcd) Unlock(_ context.Context) error {
+func (l *LockEtcd) Unlock(ctx context.Context) error {
 	defer func() {
 		if err := l.session.Close(); err != nil {
 			l.logger.Log(err)
 		}
 	}()
-	return errors.Wrap(l.mu.Unlock(l.cli.Ctx()), "failed to unlock a mutex in etcd")
+	return errors.Wrap(l.mu.Unlock(ctx), "failed to unlock a mutex in etcd")
 }
 
 // LockConsul is a wrapper around github.com/hashicorp/consul/api.Lock that implements the DistLocker interface.
