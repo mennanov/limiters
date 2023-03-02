@@ -16,7 +16,7 @@ func (s *LimitersTestSuite) useLock(lock limiters.DistLocker, shared *int, sleep
 	// Check for the race condition.
 	s.Equal(sh, *shared)
 	*shared++
-	s.NoError(lock.Unlock())
+	s.NoError(lock.Unlock(context.Background()))
 }
 
 func (s *LimitersTestSuite) TestDistLockers() {

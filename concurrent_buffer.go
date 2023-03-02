@@ -40,7 +40,7 @@ func (c *ConcurrentBuffer) Limit(ctx context.Context, key string) error {
 		return err
 	}
 	defer func() {
-		if err := c.locker.Unlock(); err != nil {
+		if err := c.locker.Unlock(ctx); err != nil {
 			c.logger.Log(err)
 		}
 	}()
