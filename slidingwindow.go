@@ -7,6 +7,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/go-redis/redis"
 	"github.com/pkg/errors"
 )
@@ -146,4 +150,122 @@ func (s *SlidingWindowRedis) Increment(ctx context.Context, prev, curr time.Time
 	case <-ctx.Done():
 		return 0, 0, ctx.Err()
 	}
+}
+
+// SlidingWindowDynamoDB implements SlidingWindow in DynamoDB.
+type SlidingWindowDynamoDB struct {
+	client       *dynamodb.Client
+	partitionKey string
+	tableProps   DynamoDBTableProperties
+}
+
+// NewSlidingWindowDynamoDB creates a new instance of SlidingWindowDynamoDB.
+// PartitionKey is the key used to store all the this implementation in DynamoDB.
+//
+// TableProps describe the table that this backend should work with. This backend requires the following on the table:
+// * SortKey
+// * TTL
+func NewSlidingWindowDynamoDB(client *dynamodb.Client, partitionKey string, props DynamoDBTableProperties) *SlidingWindowDynamoDB {
+	return &SlidingWindowDynamoDB{
+		client:       client,
+		partitionKey: partitionKey,
+		tableProps:   props,
+	}
+}
+
+// Increment increments the current window's counter in DynamoDB and returns the number of requests in the previous window
+// and the current one.
+func (s *SlidingWindowDynamoDB) Increment(ctx context.Context, prev, curr time.Time, ttl time.Duration) (int64, int64, error) {
+	wg := &sync.WaitGroup{}
+	wg.Add(2)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		wg.Wait()
+	}()
+
+	var currentCount int64
+	var currentErr error
+	go func() {
+		defer wg.Done()
+		resp, err := s.client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+			Key: map[string]types.AttributeValue{
+				s.tableProps.PartitionKeyName: &types.AttributeValueMemberS{Value: s.partitionKey},
+				s.tableProps.SortKeyName:      &types.AttributeValueMemberS{Value: strconv.Itoa(int(curr.UnixNano()))},
+			},
+			UpdateExpression: aws.String(fixedWindowDynamoDBUpdateExpression),
+			ExpressionAttributeNames: map[string]string{
+				"#TTL": s.tableProps.TTLFieldName,
+				"#C":   dynamodbWindowCountKey,
+			},
+			ExpressionAttributeValues: map[string]types.AttributeValue{
+				":ttl": &types.AttributeValueMemberN{Value: strconv.Itoa(int(time.Now().Add(ttl).Unix()))},
+				":def": &types.AttributeValueMemberN{Value: "0"},
+				":inc": &types.AttributeValueMemberN{Value: "1"},
+			},
+			TableName:    &s.tableProps.TableName,
+			ReturnValues: types.ReturnValueAllNew,
+		})
+
+		if err != nil {
+			currentErr = err
+			return
+		}
+
+		var tmp float64
+		currentErr = attributevalue.Unmarshal(resp.Attributes[dynamodbWindowCountKey], &tmp)
+		if err != nil {
+			return
+		}
+
+		currentCount = int64(tmp)
+	}()
+
+	var priorCount int64
+	var priorErr error
+	go func() {
+		defer wg.Done()
+		resp, err := s.client.GetItem(ctx, &dynamodb.GetItemInput{
+			TableName: aws.String(s.tableProps.TableName),
+			Key: map[string]types.AttributeValue{
+				s.tableProps.PartitionKeyName: &types.AttributeValueMemberS{Value: s.partitionKey},
+				s.tableProps.SortKeyName:      &types.AttributeValueMemberS{Value: strconv.Itoa(int(prev.UnixNano()))},
+			},
+			ConsistentRead: aws.Bool(true),
+		})
+
+		if err != nil {
+			priorCount, priorErr = 0, errors.Wrap(err, "dynamodb get item failed")
+			return
+		}
+
+		if len(resp.Item) == 0 {
+			priorCount = 0
+			return
+		}
+
+		var count float64
+		err = attributevalue.Unmarshal(resp.Item[dynamodbWindowCountKey], &count)
+		if err != nil {
+			priorCount, priorErr = 0, errors.Wrap(err, "unmarshal of dynamodb attribute value failed")
+			return
+		}
+
+		priorCount = int64(count)
+	}()
+
+	select {
+	case <-done:
+	case <-ctx.Done():
+		return 0, 0, ctx.Err()
+	}
+
+	if currentErr != nil {
+		return 0, 0, errors.Wrap(currentErr, "failed to update current count")
+	} else if priorErr != nil {
+		return 0, 0, errors.Wrap(priorErr, "failed to get previous count")
+	}
+
+	return priorCount, currentCount, nil
 }

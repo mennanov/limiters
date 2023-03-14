@@ -40,12 +40,17 @@ jobs:
         uses: actions/setup-go@v3
         with:
           go-version: ${{ matrix.go-version }}
+      - name: Setup DynamoDB Local
+        uses: rrainn/dynamodb-action@v2.0.1
+        with:
+          port: 8000
       - name: Run tests
         env:
           ETCD_ENDPOINTS: 'localhost:2379'
           REDIS_ADDR: 'localhost:6379'
           CONSUL_ADDR: 'localhost:8500'
           ZOOKEEPER_ENDPOINTS: 'localhost:2181'
+          AWS_ADDR: 'localhost:4566'
         run: go test -race -v -coverprofile=coverage.txt -covermode=atomic ./...
       - uses: codecov/codecov-action@v3
         with:

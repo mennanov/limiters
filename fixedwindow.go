@@ -3,9 +3,14 @@ package limiters
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/go-redis/redis"
 	"github.com/pkg/errors"
 )
@@ -125,4 +130,77 @@ func (f *FixedWindowRedis) Increment(ctx context.Context, window time.Time, ttl 
 	case <-ctx.Done():
 		return 0, ctx.Err()
 	}
+}
+
+// FixedWindowDynamoDB implements FixedWindow in DynamoDB.
+type FixedWindowDynamoDB struct {
+	client       *dynamodb.Client
+	partitionKey string
+	tableProps   DynamoDBTableProperties
+}
+
+// NewFixedWindowDynamoDB creates a new instance of FixedWindowDynamoDB.
+// PartitionKey is the key used to store all the this implementation in DynamoDB.
+//
+// TableProps describe the table that this backend should work with. This backend requires the following on the table:
+// * SortKey
+// * TTL
+func NewFixedWindowDynamoDB(client *dynamodb.Client, partitionKey string, props DynamoDBTableProperties) *FixedWindowDynamoDB {
+	return &FixedWindowDynamoDB{
+		client:       client,
+		partitionKey: partitionKey,
+		tableProps:   props,
+	}
+}
+
+const (
+	fixedWindowDynamoDBUpdateExpression = "SET #C = if_not_exists(#C, :def) + :inc, #TTL = :ttl"
+	dynamodbWindowCountKey              = "Count"
+)
+
+// Increment increments the window's counter in DynamoDB.
+func (f *FixedWindowDynamoDB) Increment(ctx context.Context, window time.Time, ttl time.Duration) (int64, error) {
+	var resp *dynamodb.UpdateItemOutput
+	var err error
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		resp, err = f.client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+			Key: map[string]types.AttributeValue{
+				f.tableProps.PartitionKeyName: &types.AttributeValueMemberS{Value: f.partitionKey},
+				f.tableProps.SortKeyName:      &types.AttributeValueMemberS{Value: strconv.Itoa(int(window.UnixNano()))},
+			},
+			UpdateExpression: aws.String(fixedWindowDynamoDBUpdateExpression),
+			ExpressionAttributeNames: map[string]string{
+				"#TTL": f.tableProps.TTLFieldName,
+				"#C":   dynamodbWindowCountKey,
+			},
+			ExpressionAttributeValues: map[string]types.AttributeValue{
+				":ttl": &types.AttributeValueMemberN{Value: strconv.Itoa(int(time.Now().Add(ttl).Unix()))},
+				":def": &types.AttributeValueMemberN{Value: "0"},
+				":inc": &types.AttributeValueMemberN{Value: "1"},
+			},
+			TableName:    &f.tableProps.TableName,
+			ReturnValues: types.ReturnValueAllNew,
+		})
+	}()
+
+	select {
+	case <-done:
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	}
+
+	if err != nil {
+		return 0, errors.Wrap(err, "dynamodb update item failed")
+	}
+
+	var count float64
+	err = attributevalue.Unmarshal(resp.Attributes[dynamodbWindowCountKey], &count)
+	if err != nil {
+		return 0, errors.Wrap(err, "unmarshal of dynamodb attribute value failed")
+	}
+
+	return int64(count), nil
 }

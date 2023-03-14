@@ -2,18 +2,23 @@ package limiters_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/go-redis/redis"
 	"github.com/google/uuid"
 	"github.com/hashicorp/consul/api"
 	"github.com/samuel/go-zookeeper/zk"
 	"github.com/stretchr/testify/suite"
-	"go.etcd.io/etcd/client/v3"
+	clientv3 "go.etcd.io/etcd/client/v3"
 
 	l "github.com/mennanov/limiters"
 )
@@ -56,11 +61,13 @@ func (c *fakeClock) reset() {
 
 type LimitersTestSuite struct {
 	suite.Suite
-	etcdClient   *clientv3.Client
-	redisClient  *redis.Client
-	consulClient *api.Client
-	zkConn       *zk.Conn
-	logger       *l.StdLogger
+	etcdClient         *clientv3.Client
+	redisClient        *redis.Client
+	consulClient       *api.Client
+	zkConn             *zk.Conn
+	logger             *l.StdLogger
+	dynamodbClient     *dynamodb.Client
+	dynamoDBTableProps l.DynamoDBTableProperties
 }
 
 func (s *LimitersTestSuite) SetupSuite() {
@@ -78,11 +85,38 @@ func (s *LimitersTestSuite) SetupSuite() {
 	s.zkConn, _, err = zk.Connect(strings.Split(os.Getenv("ZOOKEEPER_ENDPOINTS"), ","), time.Second)
 	s.Require().NoError(err)
 	s.logger = l.NewStdLogger()
+
+	awsResolver := aws.EndpointResolverWithOptionsFunc(func(service string, region string, options ...interface{}) (aws.Endpoint, error) {
+		return aws.Endpoint{
+			PartitionID:       "aws",
+			URL:               fmt.Sprintf("http://%s", os.Getenv("AWS_ADDR")),
+			SigningRegion:     "us-east-1",
+			HostnameImmutable: true,
+		}, nil
+	})
+	awsCfg, err := config.LoadDefaultConfig(context.Background(),
+		config.WithRegion("us-east-1"),
+		config.WithEndpointResolverWithOptions(awsResolver),
+		config.WithCredentialsProvider(credentials.StaticCredentialsProvider{
+			Value: aws.Credentials{
+				AccessKeyID: "dummy", SecretAccessKey: "dummy", SessionToken: "dummy",
+				Source: "Hard-coded credentials; values are irrelevant for local DynamoDB",
+			},
+		}),
+	)
+	s.Require().NoError(err)
+
+	s.dynamodbClient = dynamodb.NewFromConfig(awsCfg)
+
+	s.Require().NoError(CreateTestDynamoDBTable(context.Background(), s.dynamodbClient))
+	s.dynamoDBTableProps, err = l.LoadDynamoDBTableProperties(context.Background(), s.dynamodbClient, testDynamoDBTableName)
+	s.Require().NoError(err)
 }
 
 func (s *LimitersTestSuite) TearDownSuite() {
 	s.Assert().NoError(s.etcdClient.Close())
 	s.Assert().NoError(s.redisClient.Close())
+	s.Assert().NoError(DeleteTestDynamoDBTable(context.Background(), s.dynamodbClient))
 }
 
 func TestBucketTestSuite(t *testing.T) {
