@@ -1,4 +1,4 @@
-module github.com/mennanov/limiters
+module github.com/vivalapanda/limiters
 
 go 1.17
 
