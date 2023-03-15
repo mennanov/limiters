@@ -335,7 +335,7 @@ func redisKey(prefix, key string) string {
 // Although depending on a persistence and a cluster configuration some data might be lost in case of a failure
 // resulting in an under-limiting the accesses to the service.
 type TokenBucketRedis struct {
-	cli         *redis.Client
+	cli         redis.Cmdable
 	prefix      string
 	ttl         time.Duration
 	raceCheck   bool
