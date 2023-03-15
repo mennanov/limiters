@@ -349,7 +349,7 @@ type TokenBucketRedis struct {
 // If raceCheck is true and the keys in Redis are modified in between State() and SetState() calls then
 // ErrRaceCondition is returned.
 // This adds an extra overhead since a Lua script has to be executed on the Redis side which locks the entire database.
-func NewTokenBucketRedis(cli *redis.Client, prefix string, ttl time.Duration, raceCheck bool) *TokenBucketRedis {
+func NewTokenBucketRedis(cli redis.Cmdable, prefix string, ttl time.Duration, raceCheck bool) *TokenBucketRedis {
 	return &TokenBucketRedis{cli: cli, prefix: prefix, ttl: ttl, raceCheck: raceCheck}
 }
 
