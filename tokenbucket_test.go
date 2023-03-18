@@ -161,3 +161,27 @@ func (s *LimitersTestSuite) TestTokenBucketOverflow() {
 		s.Equal(time.Duration(0), wait)
 	}
 }
+
+func (s *LimitersTestSuite) TestTokenBucketRefill() {
+	backend := l.NewTokenBucketInMemory()
+	clock := l.NewSystemClock()
+
+	bucket := l.NewTokenBucket(4, time.Millisecond*100, l.NewLockNoop(), backend, clock, s.logger)
+	sleepDurations := []int{150, 90, 50, 70}
+	desiredAvailable := []int64{3, 2, 2, 2}
+
+	bucket.Limit(context.Background())
+	state, err := backend.State(context.Background())
+	s.Assert().NoError(err, "unable to retrieve backend state")
+
+	for i := range sleepDurations {
+		clock.Sleep(time.Millisecond * time.Duration(sleepDurations[i]))
+
+		bucket.Limit(context.Background())
+
+		state, err = backend.State(context.Background())
+		s.Assert().NoError(err, "unable to retrieve backend state")
+
+		s.Assert().Equal(desiredAvailable[i], state.Available)
+	}
+}
