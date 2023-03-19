@@ -1,0 +1,13 @@
+name: Static Checks
+
+on: [ "push", "pull_request" ]
+
+jobs:
+  staticcheck:
+    name: Linter
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dominikh/staticcheck-action@v1.3.0
+        with:
+          version: "2023.1.3"
