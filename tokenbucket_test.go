@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-
 	l "github.com/mennanov/limiters"
 )
 
@@ -160,5 +159,32 @@ func (s *LimitersTestSuite) TestTokenBucketOverflow() {
 		wait, err = bucket.Limit(context.TODO())
 		s.Require().NoError(err)
 		s.Equal(time.Duration(0), wait)
+	}
+}
+
+func (s *LimitersTestSuite) TestTokenBucketRefill() {
+	backend := l.NewTokenBucketInMemory()
+	clock := newFakeClock()
+
+	bucket := l.NewTokenBucket(4, time.Millisecond*100, l.NewLockNoop(), backend, clock, s.logger)
+	sleepDurations := []int{150, 90, 50, 70}
+	desiredAvailable := []int64{3, 2, 2, 2}
+
+	_, err := bucket.Limit(context.Background())
+	s.Require().NoError(err)
+
+	_, err = backend.State(context.Background())
+	s.Require().NoError(err, "unable to retrieve backend state")
+
+	for i := range sleepDurations {
+		clock.Sleep(time.Millisecond * time.Duration(sleepDurations[i]))
+
+		_, err := bucket.Limit(context.Background())
+		s.Require().NoError(err)
+
+		state, err := backend.State(context.Background())
+		s.Require().NoError(err, "unable to retrieve backend state")
+
+		s.Require().Equal(desiredAvailable[i], state.Available)
 	}
 }

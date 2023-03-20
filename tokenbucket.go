@@ -11,7 +11,7 @@ import (
 	"github.com/pkg/errors"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
-	"go.etcd.io/etcd/client/v3"
+	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
 // TokenBucketState represents a state of a token bucket.
@@ -88,12 +88,14 @@ func (t *TokenBucket) Take(ctx context.Context, tokens int64) (time.Duration, er
 	now := t.clock.Now().UnixNano()
 	// Refill the bucket.
 	tokensToAdd := (now - state.Last) / int64(t.refillRate)
+	partialTime := (now - state.Last) % int64(t.refillRate)
 	if tokensToAdd > 0 {
-		state.Last = now
-		if tokensToAdd+state.Available <= t.capacity {
+		if tokensToAdd+state.Available < t.capacity {
 			state.Available += tokensToAdd
+			state.Last = now - partialTime
 		} else {
 			state.Available = t.capacity
+			state.Last = now
 		}
 	}
 
