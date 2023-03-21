@@ -25,7 +25,6 @@ type DynamoDBTableProperties struct {
 }
 
 // LoadDynamoDBTableProperties fetches a table description with the supplied client and returns a DynamoDBTableProperties struct
-// Results are cached.
 func LoadDynamoDBTableProperties(ctx context.Context, client *dynamodb.Client, tableName string) (DynamoDBTableProperties, error) {
 	resp, err := client.DescribeTable(ctx, &dynamodb.DescribeTableInput{
 		TableName: &tableName,
