@@ -7,6 +7,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/mennanov/limiters"
 	"github.com/pkg/errors"
 )
 
@@ -85,4 +86,27 @@ func DeleteTestDynamoDBTable(ctx context.Context, client *dynamodb.Client) error
 	}
 
 	return nil
+}
+
+func (s *LimitersTestSuite) TestDynamoRaceCondition() {
+	backend := limiters.NewLeakyBucketDynamoDB(s.dynamodbClient, "race-check", s.dynamoDBTableProps, time.Minute, true)
+
+	err := backend.SetState(context.Background(), limiters.LeakyBucketState{})
+	s.Require().NoError(err)
+
+	_, err = backend.State(context.Background())
+	s.Require().NoError(err)
+
+	_, err = s.dynamodbClient.PutItem(context.Background(), &dynamodb.PutItemInput{
+		Item: map[string]types.AttributeValue{
+			s.dynamoDBTableProps.PartitionKeyName: &types.AttributeValueMemberS{Value: "race-check"},
+			s.dynamoDBTableProps.SortKeyName:      &types.AttributeValueMemberS{Value: "race-check"},
+			"Version":                             &types.AttributeValueMemberN{Value: "5"},
+		},
+		TableName: &s.dynamoDBTableProps.TableName,
+	})
+	s.Require().NoError(err)
+
+	err = backend.SetState(context.Background(), limiters.LeakyBucketState{})
+	s.Require().ErrorIs(err, limiters.ErrRaceCondition, err)
 }
