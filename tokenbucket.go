@@ -7,6 +7,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/go-redis/redis"
 	"github.com/pkg/errors"
 	"go.etcd.io/etcd/api/v3/mvccpb"
@@ -466,4 +470,133 @@ func (t *TokenBucketRedis) SetState(ctx context.Context, state TokenBucketState)
 	}
 
 	return errors.Wrap(err, "failed to save keys to redis")
+}
+
+// TokenBucketDynamoDB is a DynamoDB implementation of a TokenBucketStateBackend.
+type TokenBucketDynamoDB struct {
+	client        *dynamodb.Client
+	tableProps    DynamoDBTableProperties
+	partitionKey  string
+	ttl           time.Duration
+	raceCheck     bool
+	latestVersion int64
+	keys          map[string]types.AttributeValue
+}
+
+// NewTokenBucketDynamoDB creates a new TokenBucketDynamoDB instance.
+// PartitionKey is the key used to store all the this implementation in DynamoDB.
+//
+// TableProps describe the table that this backend should work with. This backend requires the following on the table:
+// * TTL
+//
+// TTL is the TTL of the stored item.
+//
+// If raceCheck is true and the item in DynamoDB are modified in between State() and SetState() calls then
+// ErrRaceCondition is returned.
+func NewTokenBucketDynamoDB(client *dynamodb.Client, partitionKey string, tableProps DynamoDBTableProperties, ttl time.Duration, raceCheck bool) *TokenBucketDynamoDB {
+	keys := map[string]types.AttributeValue{
+		tableProps.PartitionKeyName: &types.AttributeValueMemberS{Value: partitionKey},
+	}
+
+	if tableProps.SortKeyUsed {
+		keys[tableProps.SortKeyName] = &types.AttributeValueMemberS{Value: partitionKey}
+	}
+
+	return &TokenBucketDynamoDB{
+		client:       client,
+		partitionKey: partitionKey,
+		tableProps:   tableProps,
+		ttl:          ttl,
+		raceCheck:    raceCheck,
+		keys:         keys,
+	}
+}
+
+// State gets the bucket's state from DynamoDB.
+func (t *TokenBucketDynamoDB) State(ctx context.Context) (TokenBucketState, error) {
+	resp, err := dynamoDBGetItem(ctx, t.client, t.getGetItemInput())
+
+	if err != nil {
+		return TokenBucketState{}, err
+	}
+
+	return t.loadStateFromDynamoDB(resp)
+}
+
+// SetState updates the state in DynamoDB.
+func (t *TokenBucketDynamoDB) SetState(ctx context.Context, state TokenBucketState) error {
+	input := t.getPutItemInputFromState(state)
+
+	var err error
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, err = dynamoDBputItem(ctx, t.client, input)
+	}()
+
+	select {
+	case <-done:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	return err
+}
+
+const dynamoDBBucketAvailableKey = "Available"
+
+func (t *TokenBucketDynamoDB) getGetItemInput() *dynamodb.GetItemInput {
+	return &dynamodb.GetItemInput{
+		TableName: &t.tableProps.TableName,
+		Key:       t.keys,
+	}
+}
+
+func (t *TokenBucketDynamoDB) getPutItemInputFromState(state TokenBucketState) *dynamodb.PutItemInput {
+	item := map[string]types.AttributeValue{}
+	for k, v := range t.keys {
+		item[k] = v
+	}
+
+	item[dynamoDBBucketLastKey] = &types.AttributeValueMemberN{Value: strconv.FormatInt(state.Last, 10)}
+	item[dynamoDBBucketVersionKey] = &types.AttributeValueMemberN{Value: strconv.FormatInt(t.latestVersion+1, 10)}
+	item[t.tableProps.TTLFieldName] = &types.AttributeValueMemberN{Value: strconv.FormatInt(time.Now().Add(t.ttl).Unix(), 10)}
+	item[dynamoDBBucketAvailableKey] = &types.AttributeValueMemberN{Value: strconv.FormatInt(state.Available, 10)}
+
+	input := &dynamodb.PutItemInput{
+		TableName: &t.tableProps.TableName,
+		Item:      item,
+	}
+
+	if t.raceCheck && t.latestVersion > 0 {
+		input.ConditionExpression = aws.String(dynamodbBucketRaceConditionExpression)
+		input.ExpressionAttributeValues = map[string]types.AttributeValue{
+			":version": &types.AttributeValueMemberN{Value: strconv.FormatInt(t.latestVersion, 10)},
+		}
+	}
+
+	return input
+}
+
+func (t *TokenBucketDynamoDB) loadStateFromDynamoDB(resp *dynamodb.GetItemOutput) (TokenBucketState, error) {
+	state := TokenBucketState{}
+
+	err := attributevalue.Unmarshal(resp.Item[dynamoDBBucketLastKey], &state.Last)
+	if err != nil {
+		return state, fmt.Errorf("unmarshal dynamodb Last attribute failed: %w", err)
+	}
+
+	err = attributevalue.Unmarshal(resp.Item[dynamoDBBucketAvailableKey], &state.Available)
+	if err != nil {
+		return state, errors.Wrap(err, "unmarshal of dynamodb item attribute failed")
+	}
+
+	if t.raceCheck {
+		err = attributevalue.Unmarshal(resp.Item[dynamoDBBucketVersionKey], &t.latestVersion)
+		if err != nil {
+			return state, fmt.Errorf("unmarshal dynamodb Version attribute failed: %w", err)
+		}
+	}
+
+	return state, nil
 }

@@ -8,10 +8,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/go-redis/redis"
 	"github.com/pkg/errors"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
-	"go.etcd.io/etcd/client/v3"
+	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
 // LeakyBucketState represents the state of a LeakyBucket.
@@ -390,4 +394,130 @@ func (t *LeakyBucketRedis) SetState(ctx context.Context, state LeakyBucketState)
 	}
 
 	return errors.Wrap(err, "failed to save keys to redis")
+}
+
+// LeakyBucketDynamoDB is a DyanamoDB implementation of a LeakyBucketStateBackend.
+type LeakyBucketDynamoDB struct {
+	client        *dynamodb.Client
+	tableProps    DynamoDBTableProperties
+	partitionKey  string
+	ttl           time.Duration
+	raceCheck     bool
+	latestVersion int64
+	keys          map[string]types.AttributeValue
+}
+
+// NewLeakyBucketDynamoDB creates a new LeakyBucketDynamoDB instance.
+// PartitionKey is the key used to store all the this implementation in DynamoDB.
+//
+// TableProps describe the table that this backend should work with. This backend requires the following on the table:
+// * TTL
+//
+// TTL is the TTL of the stored item.
+//
+// If raceCheck is true and the item in DynamoDB are modified in between State() and SetState() calls then
+// ErrRaceCondition is returned.
+func NewLeakyBucketDynamoDB(client *dynamodb.Client, partitionKey string, tableProps DynamoDBTableProperties, ttl time.Duration, raceCheck bool) *LeakyBucketDynamoDB {
+	keys := map[string]types.AttributeValue{
+		tableProps.PartitionKeyName: &types.AttributeValueMemberS{Value: partitionKey},
+	}
+
+	if tableProps.SortKeyUsed {
+		keys[tableProps.SortKeyName] = &types.AttributeValueMemberS{Value: partitionKey}
+	}
+
+	return &LeakyBucketDynamoDB{
+		client:       client,
+		partitionKey: partitionKey,
+		tableProps:   tableProps,
+		ttl:          ttl,
+		raceCheck:    raceCheck,
+		keys:         keys,
+	}
+}
+
+// State gets the bucket's state from DynamoDB.
+func (t *LeakyBucketDynamoDB) State(ctx context.Context) (LeakyBucketState, error) {
+	resp, err := dynamoDBGetItem(ctx, t.client, t.getGetItemInput())
+
+	if err != nil {
+		return LeakyBucketState{}, err
+	}
+
+	return t.loadStateFromDynamoDB(resp)
+}
+
+// SetState updates the state in DynamoDB.
+func (t *LeakyBucketDynamoDB) SetState(ctx context.Context, state LeakyBucketState) error {
+	input := t.getPutItemInputFromState(state)
+
+	var err error
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, err = dynamoDBputItem(ctx, t.client, input)
+	}()
+
+	select {
+	case <-done:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	return err
+}
+
+const (
+	dynamodbBucketRaceConditionExpression = "Version <= :version"
+	dynamoDBBucketLastKey                 = "Last"
+	dynamoDBBucketVersionKey              = "Version"
+)
+
+func (t *LeakyBucketDynamoDB) getPutItemInputFromState(state LeakyBucketState) *dynamodb.PutItemInput {
+	item := map[string]types.AttributeValue{}
+	for k, v := range t.keys {
+		item[k] = v
+	}
+
+	item[dynamoDBBucketLastKey] = &types.AttributeValueMemberN{Value: strconv.FormatInt(state.Last, 10)}
+	item[dynamoDBBucketVersionKey] = &types.AttributeValueMemberN{Value: strconv.FormatInt(t.latestVersion+1, 10)}
+	item[t.tableProps.TTLFieldName] = &types.AttributeValueMemberN{Value: strconv.FormatInt(time.Now().Add(t.ttl).Unix(), 10)}
+
+	input := &dynamodb.PutItemInput{
+		TableName: &t.tableProps.TableName,
+		Item:      item,
+	}
+
+	if t.raceCheck && t.latestVersion > 0 {
+		input.ConditionExpression = aws.String(dynamodbBucketRaceConditionExpression)
+		input.ExpressionAttributeValues = map[string]types.AttributeValue{
+			":version": &types.AttributeValueMemberN{Value: strconv.FormatInt(t.latestVersion, 10)},
+		}
+	}
+
+	return input
+}
+
+func (t *LeakyBucketDynamoDB) getGetItemInput() *dynamodb.GetItemInput {
+	return &dynamodb.GetItemInput{
+		TableName: &t.tableProps.TableName,
+		Key:       t.keys,
+	}
+}
+
+func (t *LeakyBucketDynamoDB) loadStateFromDynamoDB(resp *dynamodb.GetItemOutput) (LeakyBucketState, error) {
+	state := LeakyBucketState{}
+	err := attributevalue.Unmarshal(resp.Item[dynamoDBBucketLastKey], &state.Last)
+	if err != nil {
+		return state, fmt.Errorf("unmarshal dynamodb Last attribute failed: %w", err)
+	}
+
+	if t.raceCheck {
+		err = attributevalue.Unmarshal(resp.Item[dynamoDBBucketVersionKey], &t.latestVersion)
+		if err != nil {
+			return state, fmt.Errorf("unmarshal dynamodb Version attribute failed: %w", err)
+		}
+	}
+
+	return state, nil
 }
