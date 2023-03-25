@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-redis/redis"
+	"github.com/go-redis/redis/v8"
 	"github.com/pkg/errors"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"go.etcd.io/etcd/client/v3"
@@ -295,7 +295,7 @@ func (t *LeakyBucketRedis) State(ctx context.Context) (LeakyBucketState, error) 
 		if t.raceCheck {
 			keys = append(keys, redisKey(t.prefix, redisKeyLBVersion))
 		}
-		values, err = t.cli.MGet(keys...).Result()
+		values, err = t.cli.MGet(ctx, keys...).Result()
 	}()
 
 	select {
@@ -353,12 +353,12 @@ func (t *LeakyBucketRedis) SetState(ctx context.Context, state LeakyBucketState)
 	go func() {
 		defer close(done)
 		if !t.raceCheck {
-			err = t.cli.Set(redisKey(t.prefix, redisKeyLBLast), state.Last, t.ttl).Err()
+			err = t.cli.Set(ctx, redisKey(t.prefix, redisKeyLBLast), state.Last, t.ttl).Err()
 			return
 		}
 		var result interface{}
 		// TODO: make use of EVALSHA.
-		result, err = t.cli.Eval(`
+		result, err = t.cli.Eval(ctx, `
 	local version = tonumber(redis.call('get', KEYS[1])) or 0
 	if version > tonumber(ARGV[1]) then
 		return 'RACE_CONDITION'

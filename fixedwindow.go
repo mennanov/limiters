@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-redis/redis"
+	"github.com/go-redis/redis/v8"
 	"github.com/pkg/errors"
 )
 
@@ -108,10 +108,10 @@ func (f *FixedWindowRedis) Increment(ctx context.Context, window time.Time, ttl 
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		_, err = f.cli.Pipelined(func(pipeliner redis.Pipeliner) error {
+		_, err = f.cli.Pipelined(ctx, func(pipeliner redis.Pipeliner) error {
 			key := fmt.Sprintf("%d", window.UnixNano())
-			incr = pipeliner.Incr(redisKey(f.prefix, key))
-			pipeliner.PExpire(redisKey(f.prefix, key), ttl)
+			incr = pipeliner.Incr(ctx, redisKey(f.prefix, key))
+			pipeliner.PExpire(ctx, redisKey(f.prefix, key), ttl)
 			return nil
 		})
 	}()

@@ -3,7 +3,6 @@ module github.com/mennanov/limiters
 go 1.17
 
 require (
-	github.com/go-redis/redis v6.15.9+incompatible
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/google/uuid v1.3.0
 	github.com/hashicorp/consul/api v1.18.0
