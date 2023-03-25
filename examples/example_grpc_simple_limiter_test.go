@@ -4,6 +4,7 @@ package examples
 import (
 	"context"
 	"fmt"
+	"google.golang.org/grpc/credentials/insecure"
 	"log"
 	"net"
 	"os"
@@ -78,7 +79,7 @@ func Example_simpleGRPCLimiter() {
 	defer s.GracefulStop()
 
 	// Set up a client connection to the server.
-	conn, err := grpc.Dial(fmt.Sprintf("localhost%s", port), grpc.WithInsecure())
+	conn, err := grpc.Dial(fmt.Sprintf("localhost%s", port), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Fatalf("did not connect: %v", err)
 	}
