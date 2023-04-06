@@ -11,8 +11,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	"github.com/go-redis/redis"
 	"github.com/pkg/errors"
+	"github.com/redis/go-redis/v9"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -373,7 +373,7 @@ func (t *TokenBucketRedis) State(ctx context.Context) (TokenBucketState, error) 
 		if t.raceCheck {
 			keys = append(keys, redisKey(t.prefix, redisKeyTBVersion))
 		}
-		values, err = t.cli.MGet(keys...).Result()
+		values, err = t.cli.MGet(ctx, keys...).Result()
 	}()
 
 	select {
@@ -425,17 +425,17 @@ func (t *TokenBucketRedis) SetState(ctx context.Context, state TokenBucketState)
 	go func() {
 		defer close(done)
 		if !t.raceCheck {
-			_, err = t.cli.TxPipelined(func(pipeliner redis.Pipeliner) error {
-				if err = pipeliner.Set(redisKey(t.prefix, redisKeyTBLast), state.Last, t.ttl).Err(); err != nil {
+			_, err = t.cli.TxPipelined(ctx, func(pipeliner redis.Pipeliner) error {
+				if err = pipeliner.Set(ctx, redisKey(t.prefix, redisKeyTBLast), state.Last, t.ttl).Err(); err != nil {
 					return err
 				}
-				return pipeliner.Set(redisKey(t.prefix, redisKeyTBAvailable), state.Available, t.ttl).Err()
+				return pipeliner.Set(ctx, redisKey(t.prefix, redisKeyTBAvailable), state.Available, t.ttl).Err()
 			})
 			return
 		}
 		var result interface{}
 		// TODO: use EVALSHA.
-		result, err = t.cli.Eval(`
+		result, err = t.cli.Eval(ctx, `
 	local version = tonumber(redis.call('get', KEYS[1])) or 0
 	if version > tonumber(ARGV[1]) then
 		return 'RACE_CONDITION'

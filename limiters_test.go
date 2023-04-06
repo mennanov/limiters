@@ -13,9 +13,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
-	"github.com/go-redis/redis"
+	"github.com/go-redsync/redsync/v4/redis/goredis/v9"
 	"github.com/google/uuid"
 	"github.com/hashicorp/consul/api"
+	"github.com/redis/go-redis/v9"
 	"github.com/samuel/go-zookeeper/zk"
 	"github.com/stretchr/testify/suite"
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -134,10 +135,12 @@ func (s *LimitersTestSuite) distLockers(generateKeys bool) []l.DistLocker {
 	consulKey := randomKey
 	etcdKey := randomKey
 	zkKey := "/" + randomKey
+	redisKey := randomKey
 	if !generateKeys {
 		consulKey = "dist_locker"
 		etcdKey = "dist_locker"
 		zkKey = "/dist_locker"
+		redisKey = "dist_locker"
 	}
 	consulLock, err := s.consulClient.LockKey(consulKey)
 	s.Require().NoError(err)
@@ -145,6 +148,7 @@ func (s *LimitersTestSuite) distLockers(generateKeys bool) []l.DistLocker {
 		l.NewLockEtcd(s.etcdClient, etcdKey, s.logger),
 		l.NewLockConsul(consulLock),
 		l.NewLockZookeeper(zk.NewLock(s.zkConn, zkKey, zk.WorldACL(zk.PermAll))),
+		l.NewLockRedis(goredis.NewPool(s.redisClient), redisKey),
 	}
 }
 

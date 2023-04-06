@@ -11,8 +11,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	"github.com/go-redis/redis"
 	"github.com/pkg/errors"
+	"github.com/redis/go-redis/v9"
 )
 
 // FixedWindowIncrementer wraps the Increment method.
@@ -113,10 +113,10 @@ func (f *FixedWindowRedis) Increment(ctx context.Context, window time.Time, ttl 
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		_, err = f.cli.Pipelined(func(pipeliner redis.Pipeliner) error {
+		_, err = f.cli.Pipelined(ctx, func(pipeliner redis.Pipeliner) error {
 			key := fmt.Sprintf("%d", window.UnixNano())
-			incr = pipeliner.Incr(redisKey(f.prefix, key))
-			pipeliner.PExpire(redisKey(f.prefix, key), ttl)
+			incr = pipeliner.Incr(ctx, redisKey(f.prefix, key))
+			pipeliner.PExpire(ctx, redisKey(f.prefix, key), ttl)
 			return nil
 		})
 	}()

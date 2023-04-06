@@ -41,12 +41,12 @@ func (s *LimitersTestSuite) TestConcurrentBufferNoOverflow() {
 				defer wg.Done()
 				key := fmt.Sprintf("key%d", i)
 				s.NoError(buffer.Limit(context.TODO(), key))
-				s.NoError(buffer.Done(key))
+				s.NoError(buffer.Done(context.TODO(), key))
 			}(i, buffer)
 		}
 		wg.Wait()
 		s.NoError(buffer.Limit(context.TODO(), "last"))
-		s.NoError(buffer.Done("last"))
+		s.NoError(buffer.Done(context.TODO(), "last"))
 	}
 }
 

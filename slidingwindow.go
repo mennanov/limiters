@@ -11,8 +11,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	"github.com/go-redis/redis"
 	"github.com/pkg/errors"
+	"github.com/redis/go-redis/v9"
 )
 
 // SlidingWindowIncrementer wraps the Increment method.
@@ -122,11 +122,11 @@ func (s *SlidingWindowRedis) Increment(ctx context.Context, prev, curr time.Time
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		_, err = s.cli.Pipelined(func(pipeliner redis.Pipeliner) error {
+		_, err = s.cli.Pipelined(ctx, func(pipeliner redis.Pipeliner) error {
 			currKey := fmt.Sprintf("%d", curr.UnixNano())
-			incr = pipeliner.Incr(redisKey(s.prefix, currKey))
-			pipeliner.PExpire(redisKey(s.prefix, currKey), ttl)
-			prevCountCmd = pipeliner.Get(redisKey(s.prefix, fmt.Sprintf("%d", prev.UnixNano())))
+			incr = pipeliner.Incr(ctx, redisKey(s.prefix, currKey))
+			pipeliner.PExpire(ctx, redisKey(s.prefix, currKey), ttl)
+			prevCountCmd = pipeliner.Get(ctx, redisKey(s.prefix, fmt.Sprintf("%d", prev.UnixNano())))
 			return nil
 		})
 	}()
