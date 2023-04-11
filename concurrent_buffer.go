@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-redis/redis"
 	"github.com/pkg/errors"
+	"github.com/redis/go-redis/v9"
 )
 
 // ConcurrentBufferBackend wraps the Add and Remove methods.
@@ -15,7 +15,7 @@ type ConcurrentBufferBackend interface {
 	// Add adds the request with the given key to the buffer and returns the total number of requests in it.
 	Add(ctx context.Context, key string) (int64, error)
 	// Remove removes the request from the buffer.
-	Remove(key string) error
+	Remove(ctx context.Context, key string) error
 }
 
 // ConcurrentBuffer implements a limiter that allows concurrent requests up to the given capacity.
@@ -51,7 +51,7 @@ func (c *ConcurrentBuffer) Limit(ctx context.Context, key string) error {
 	}
 	if counter > c.capacity {
 		// Rollback the Add() operation.
-		if err = c.backend.Remove(key); err != nil {
+		if err = c.backend.Remove(ctx, key); err != nil {
 			c.logger.Log(err)
 		}
 		return ErrLimitExhausted
@@ -60,8 +60,8 @@ func (c *ConcurrentBuffer) Limit(ctx context.Context, key string) error {
 }
 
 // Done removes the request identified by the key from the buffer.
-func (c *ConcurrentBuffer) Done(key string) error {
-	return c.backend.Remove(key)
+func (c *ConcurrentBuffer) Done(ctx context.Context, key string) error {
+	return c.backend.Remove(ctx, key)
 }
 
 // ConcurrentBufferInMemory is an in-memory implementation of ConcurrentBufferBackend.
@@ -93,7 +93,7 @@ func (c *ConcurrentBufferInMemory) Add(ctx context.Context, key string) (int64, 
 }
 
 // Remove removes the request from the buffer.
-func (c *ConcurrentBufferInMemory) Remove(key string) error {
+func (c *ConcurrentBufferInMemory) Remove(_ context.Context, key string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.registry.Delete(key)
@@ -123,15 +123,15 @@ func (c *ConcurrentBufferRedis) Add(ctx context.Context, key string) (int64, err
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		_, err = c.cli.Pipelined(func(pipeliner redis.Pipeliner) error {
+		_, err = c.cli.Pipelined(ctx, func(pipeliner redis.Pipeliner) error {
 			// Remove expired items.
 			now := c.clock.Now()
-			pipeliner.ZRemRangeByScore(c.key, "-inf", fmt.Sprintf("%d", now.Add(-c.ttl).UnixNano()))
-			pipeliner.ZAdd(c.key, redis.Z{
+			pipeliner.ZRemRangeByScore(ctx, c.key, "-inf", fmt.Sprintf("%d", now.Add(-c.ttl).UnixNano()))
+			pipeliner.ZAdd(ctx, c.key, redis.Z{
 				Score:  float64(now.UnixNano()),
 				Member: key,
 			})
-			countCmd = pipeliner.ZCount(c.key, "-inf", "+inf")
+			countCmd = pipeliner.ZCount(ctx, c.key, "-inf", "+inf")
 			return nil
 		})
 	}()
@@ -149,6 +149,6 @@ func (c *ConcurrentBufferRedis) Add(ctx context.Context, key string) (int64, err
 }
 
 // Remove removes the request identified by the key from the sorted set in Redis.
-func (c *ConcurrentBufferRedis) Remove(key string) error {
-	return errors.Wrap(c.cli.ZRem(c.key, key).Err(), "failed to remove an item from redis set")
+func (c *ConcurrentBufferRedis) Remove(ctx context.Context, key string) error {
+	return errors.Wrap(c.cli.ZRem(ctx, c.key, key).Err(), "failed to remove an item from redis set")
 }

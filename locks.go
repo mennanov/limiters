@@ -2,11 +2,12 @@ package limiters
 
 import (
 	"context"
-
+	"github.com/go-redsync/redsync/v4"
+	redsyncredis "github.com/go-redsync/redsync/v4/redis"
 	"github.com/hashicorp/consul/api"
 	"github.com/pkg/errors"
 	"github.com/samuel/go-zookeeper/zk"
-	"go.etcd.io/etcd/client/v3"
+	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/client/v3/concurrency"
 )
 
@@ -115,4 +116,30 @@ func (l *LockZookeeper) Lock(_ context.Context) error {
 // Unlock unlocks the lock in Zookeeper.
 func (l *LockZookeeper) Unlock(_ context.Context) error {
 	return l.lock.Unlock()
+}
+
+// LockRedis is a wrapper around github.com/go-redsync/redsync that implements the DistLocker interface.
+type LockRedis struct {
+	mutex *redsync.Mutex
+}
+
+// NewLockRedis creates a new instance of LockRedis.
+func NewLockRedis(pool redsyncredis.Pool, mutexName string) *LockRedis {
+	rs := redsync.New(pool)
+	mutex := rs.NewMutex(mutexName)
+	return &LockRedis{mutex: mutex}
+}
+
+// Lock locks the lock in Redis.
+func (l *LockRedis) Lock(_ context.Context) error {
+	err := l.mutex.Lock()
+	return errors.Wrap(err, "failed to lock a mutex in redis")
+}
+
+// Unlock unlocks the lock in Redis.
+func (l *LockRedis) Unlock(_ context.Context) error {
+	if ok, err := l.mutex.Unlock(); !ok || err != nil {
+		return errors.Wrap(err, "failed to unlock a mutex in redis")
+	}
+	return nil
 }
