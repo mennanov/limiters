@@ -136,7 +136,7 @@ func (s *SlidingWindowRedis) Increment(ctx context.Context, prev, curr time.Time
 	case <-done:
 		if err == redis.TxFailedErr {
 			return 0, 0, errors.Wrap(err, "redis transaction failed")
-		} else if err != nil && err.Error() == "redis: nil" { // TODO: is there an exported error of that type?
+		} else if err != nil && err.Error() == redis.Nil {
 			prevCount = 0
 		} else if err != nil {
 			return 0, 0, errors.Wrap(err, "unexpected error from redis")
