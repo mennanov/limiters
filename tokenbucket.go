@@ -455,7 +455,7 @@ func (t *TokenBucketRedis) SetState(ctx context.Context, state TokenBucketState)
 			state.Last,
 			state.Available,
 			// TTL in milliseconds.
-			int64(t.ttl/time.Microsecond)).Result()
+			int64(t.ttl/time.Millisecond)).Result()
 
 		if err == nil {
 			err = checkResponseFromRedis(result, []interface{}{t.lastVersion + 1, int64(1), "OK", "OK"})
