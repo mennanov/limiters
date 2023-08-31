@@ -22,23 +22,23 @@ func (s *LimitersTestSuite) useLock(lock limiters.DistLocker, shared *int, sleep
 func (s *LimitersTestSuite) TestDistLockers() {
 	locks1 := s.distLockers(false)
 	locks2 := s.distLockers(false)
-	for k := 0; k < len(locks1); k++ {
-		s.NotEmpty(locks1[k].Name())
-		s.Run(locks1[k].Name(), func() {
+	for name := range locks1 {
+		s.NotEmpty(name)
+		s.Run(name, func() {
 			var shared int
 			rounds := 6
 			sleep := time.Millisecond * 50
 			for i := 0; i < rounds; i++ {
 				wg := sync.WaitGroup{}
 				wg.Add(2)
-				go func(k int) {
+				go func(name string) {
 					defer wg.Done()
-					s.useLock(locks1[k], &shared, sleep)
-				}(k)
-				go func(k int) {
+					s.useLock(locks1[name], &shared, sleep)
+				}(name)
+				go func(name string) {
 					defer wg.Done()
-					s.useLock(locks2[k], &shared, sleep)
-				}(k)
+					s.useLock(locks2[name], &shared, sleep)
+				}(name)
 				wg.Wait()
 			}
 			s.Equal(rounds*2, shared)

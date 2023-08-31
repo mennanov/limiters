@@ -125,12 +125,16 @@ func TestBucketTestSuite(t *testing.T) {
 }
 
 // lockers returns all possible lockers (including noop).
-func (s *LimitersTestSuite) lockers(generateKeys bool) []l.DistLocker {
-	return append(s.distLockers(generateKeys), l.NewLockNoop())
+func (s *LimitersTestSuite) lockers(generateKeys bool) map[string]l.DistLocker {
+	lockers := map[string]l.DistLocker{"LockNoop": l.NewLockNoop()}
+	for name, locker := range s.distLockers(generateKeys) {
+		lockers[name] = locker
+	}
+	return lockers
 }
 
 // distLockers returns distributed lockers only.
-func (s *LimitersTestSuite) distLockers(generateKeys bool) []l.DistLocker {
+func (s *LimitersTestSuite) distLockers(generateKeys bool) map[string]l.DistLocker {
 	randomKey := uuid.New().String()
 	consulKey := randomKey
 	etcdKey := randomKey
@@ -144,11 +148,11 @@ func (s *LimitersTestSuite) distLockers(generateKeys bool) []l.DistLocker {
 	}
 	consulLock, err := s.consulClient.LockKey(consulKey)
 	s.Require().NoError(err)
-	return []l.DistLocker{
-		l.NewLockEtcd(s.etcdClient, etcdKey, s.logger),
-		l.NewLockConsul(consulLock),
-		l.NewLockZookeeper(zk.NewLock(s.zkConn, zkKey, zk.WorldACL(zk.PermAll))),
-		l.NewLockRedis(goredis.NewPool(s.redisClient), redisKey),
+	return map[string]l.DistLocker{
+		"LockEtcd":      l.NewLockEtcd(s.etcdClient, etcdKey, s.logger),
+		"LockConsul":    l.NewLockConsul(consulLock),
+		"LockZookeeper": l.NewLockZookeeper(zk.NewLock(s.zkConn, zkKey, zk.WorldACL(zk.PermAll))),
+		"LockRedis":     l.NewLockRedis(goredis.NewPool(s.redisClient), redisKey),
 	}
 }
 
