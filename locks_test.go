@@ -23,6 +23,7 @@ func (s *LimitersTestSuite) TestDistLockers() {
 	locks1 := s.distLockers(false)
 	locks2 := s.distLockers(false)
 	for k := 0; k < len(locks1); k++ {
+		s.NotEmpty(locks1[k].Name())
 		s.Run(locks1[k].Name(), func() {
 			var shared int
 			rounds := 6
