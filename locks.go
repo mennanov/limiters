@@ -17,6 +17,8 @@ type DistLocker interface {
 	Lock(ctx context.Context) error
 	// Unlock unlocks the previously successfully locked lock.
 	Unlock(ctx context.Context) error
+	// Name of the lock
+	Name() string
 }
 
 // LockNoop is a no-op implementation of the DistLocker interface.
@@ -27,6 +29,10 @@ type LockNoop struct {
 // NewLockNoop creates a new LockNoop.
 func NewLockNoop() *LockNoop {
 	return &LockNoop{}
+}
+
+func (n LockNoop) Name() string {
+	return "LockNoop"
 }
 
 // Lock imitates locking.
@@ -53,6 +59,10 @@ type LockEtcd struct {
 // NewLockEtcd creates a new instance of LockEtcd.
 func NewLockEtcd(cli *clientv3.Client, prefix string, logger Logger) *LockEtcd {
 	return &LockEtcd{cli: cli, prefix: prefix, logger: logger}
+}
+
+func (l *LockEtcd) Name() string {
+	return "LockEtcd"
 }
 
 // Lock creates a new session-based lock in etcd and locks it.
@@ -86,6 +96,10 @@ func NewLockConsul(lock *api.Lock) *LockConsul {
 	return &LockConsul{lock: lock}
 }
 
+func (l *LockConsul) Name() string {
+	return "LockConsul"
+}
+
 // Lock locks the lock in Consul.
 func (l *LockConsul) Lock(ctx context.Context) error {
 	_, err := l.lock.Lock(ctx.Done())
@@ -105,6 +119,10 @@ type LockZookeeper struct {
 // NewLockZookeeper creates a new instance of LockZookeeper.
 func NewLockZookeeper(lock *zk.Lock) *LockZookeeper {
 	return &LockZookeeper{lock: lock}
+}
+
+func (l *LockZookeeper) Name() string {
+	return "LockZookeeper"
 }
 
 // Lock locks the lock in Zookeeper.
@@ -128,6 +146,10 @@ func NewLockRedis(pool redsyncredis.Pool, mutexName string) *LockRedis {
 	rs := redsync.New(pool)
 	mutex := rs.NewMutex(mutexName)
 	return &LockRedis{mutex: mutex}
+}
+
+func (l *LockRedis) Name() string {
+	return "LockRedis"
 }
 
 // Lock locks the lock in Redis.
