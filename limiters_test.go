@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"sync"
 	"testing"
@@ -72,6 +73,20 @@ type LimitersTestSuite struct {
 }
 
 func (s *LimitersTestSuite) SetupSuite() {
+	s.Require().NoError(exec.Command("docker-compose", "up", "-d").Run())
+
+	for key, value := range map[string]string{
+		"ETCD_ENDPOINTS":      "127.0.0.1:2379",
+		"REDIS_ADDR":          "127.0.0.1:6379",
+		"ZOOKEEPER_ENDPOINTS": "127.0.0.1",
+		"CONSUL_ADDR":         "127.0.0.1:8500",
+		"AWS_ADDR":            "127.0.0.1:8000",
+	} {
+		if os.Getenv(key) == "" {
+			s.Require().NoError(os.Setenv(key, value))
+		}
+	}
+
 	var err error
 	s.etcdClient, err = clientv3.New(clientv3.Config{
 		Endpoints:   strings.Split(os.Getenv("ETCD_ENDPOINTS"), ","),
@@ -118,9 +133,11 @@ func (s *LimitersTestSuite) TearDownSuite() {
 	s.Assert().NoError(s.etcdClient.Close())
 	s.Assert().NoError(s.redisClient.Close())
 	s.Assert().NoError(DeleteTestDynamoDBTable(context.Background(), s.dynamodbClient))
+
+	s.Assert().NoError(exec.Command("docker-compose", "down").Run())
 }
 
-func TestBucketTestSuite(t *testing.T) {
+func TestLimitersTestSuite(t *testing.T) {
 	suite.Run(t, new(LimitersTestSuite))
 }
 
