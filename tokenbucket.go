@@ -364,6 +364,12 @@ func (t *TokenBucketRedis) State(ctx context.Context) (TokenBucketState, error) 
 	var values []interface{}
 	var err error
 	done := make(chan struct{}, 1)
+
+	if t.raceCheck {
+		// reset in a case of returning an empty TokenBucketState
+		t.lastVersion = 0
+	}
+
 	go func() {
 		defer close(done)
 		keys := []string{
