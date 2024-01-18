@@ -124,21 +124,21 @@ type LockRedis struct {
 }
 
 // NewLockRedis creates a new instance of LockRedis.
-func NewLockRedis(pool redsyncredis.Pool, mutexName string) *LockRedis {
+func NewLockRedis(pool redsyncredis.Pool, mutexName string, options ...redsync.Option) *LockRedis {
 	rs := redsync.New(pool)
-	mutex := rs.NewMutex(mutexName)
+	mutex := rs.NewMutex(mutexName, options...)
 	return &LockRedis{mutex: mutex}
 }
 
 // Lock locks the lock in Redis.
-func (l *LockRedis) Lock(_ context.Context) error {
-	err := l.mutex.Lock()
+func (l *LockRedis) Lock(ctx context.Context) error {
+	err := l.mutex.LockContext(ctx)
 	return errors.Wrap(err, "failed to lock a mutex in redis")
 }
 
 // Unlock unlocks the lock in Redis.
-func (l *LockRedis) Unlock(_ context.Context) error {
-	if ok, err := l.mutex.Unlock(); !ok || err != nil {
+func (l *LockRedis) Unlock(ctx context.Context) error {
+	if ok, err := l.mutex.UnlockContext(ctx); !ok || err != nil {
 		return errors.Wrap(err, "failed to unlock a mutex in redis")
 	}
 	return nil
