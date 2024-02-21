@@ -2,6 +2,10 @@ package limiters
 
 import (
 	"context"
+	"github.com/alessandro-c/gomemcached-lock"
+	"github.com/alessandro-c/gomemcached-lock/adapters/gomemcache"
+	"github.com/bradfitz/gomemcache/memcache"
+	"github.com/cenkalti/backoff/v3"
 	"github.com/go-redsync/redsync/v4"
 	redsyncredis "github.com/go-redsync/redsync/v4/redis"
 	"github.com/hashicorp/consul/api"
@@ -9,6 +13,7 @@ import (
 	"github.com/samuel/go-zookeeper/zk"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/client/v3/concurrency"
+	"time"
 )
 
 // DistLocker is a context aware distributed locker (interface is similar to sync.Locker).
@@ -142,4 +147,32 @@ func (l *LockRedis) Unlock(ctx context.Context) error {
 		return errors.Wrap(err, "failed to unlock a mutex in redis")
 	}
 	return nil
+}
+
+// LockMemcached is a wrapper around github.com/alessandro-c/gomemcached-lock that implements the DistLocker interface.
+type LockMemcached struct {
+	locker    *lock.Locker
+	mutexName string
+}
+
+// NewLockMemcached creates a new instance of LockMemcached.
+func NewLockMemcached(client *memcache.Client, mutexName string) *LockMemcached {
+	adapter := gomemcache.New(client)
+	locker := lock.New(adapter, mutexName + ":Lock", "")
+	return &LockMemcached{
+		locker:    locker,
+		mutexName: mutexName,
+	}
+}
+
+// Lock locks the lock in Memcached.
+func (l *LockMemcached) Lock(ctx context.Context) error {
+	o := func() error { return l.locker.Lock(time.Minute) }
+	b := backoff.WithMaxRetries(backoff.NewConstantBackOff(10*time.Millisecond), 1000)
+	return backoff.Retry(o, b)
+}
+
+// Unlock unlocks the lock in Memcached.
+func (l *LockMemcached) Unlock(ctx context.Context) error {
+	return l.locker.Release()
 }

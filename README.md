@@ -122,13 +122,14 @@ Supported backends:
 - [Consul](https://www.consul.io/)
 - [Zookeeper](https://zookeeper.apache.org/)
 - [Redis](https://redis.io/)
+- [Memcached](https://memcached.org/)
 
 ## Testing
 
 Run tests locally:
 ```bash
-docker-compose up -d  # start etcd, Redis, zookeeper, consul, and localstack
-ETCD_ENDPOINTS="127.0.0.1:2379" REDIS_ADDR="127.0.0.1:6379" ZOOKEEPER_ENDPOINTS="127.0.0.1" CONSUL_ADDR="127.0.0.1:8500" AWS_ADDR="127.0.0.1:8000" go test -race -v 
+docker-compose up -d  # start etcd, Redis, zookeeper, consul, memcached, and localstack
+ETCD_ENDPOINTS="127.0.0.1:2379" REDIS_ADDR="127.0.0.1:6379" ZOOKEEPER_ENDPOINTS="127.0.0.1" CONSUL_ADDR="127.0.0.1:8500" AWS_ADDR="127.0.0.1:8000" MEMCACHED_ADDR="127.0.0.1:11211" go test -race -v
 ```
 
 Run [Drone](https://drone.io) CI tests locally:

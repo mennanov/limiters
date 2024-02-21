@@ -32,3 +32,8 @@ services:
     command: "-jar DynamoDBLocal.jar -inMemory"
     ports:
       - "8000:8000"
+
+  memcached:
+    image: bitnami/memcached
+    ports:
+      - "11211:11211"
