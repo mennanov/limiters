@@ -23,6 +23,7 @@ Most common implementations are already provided.
     - redis
     - etcd
     - dynamodb
+    - memcached
 
     Puts requests in a FIFO queue to be processed at a constant rate.  
     There are no restrictions on the input rate except for the capacity of the queue.  
