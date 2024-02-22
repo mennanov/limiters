@@ -13,6 +13,7 @@ Most common implementations are already provided.
     - redis
     - etcd
     - dynamodb
+    - memcached
 
     Allows requests at a certain input rate with possible bursts configured by the capacity parameter.  
     The output rate equals to the input rate.  

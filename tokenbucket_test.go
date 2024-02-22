@@ -87,6 +87,8 @@ func (s *LimitersTestSuite) tokenBucketBackends() []l.TokenBucketStateBackend {
 		l.NewTokenBucketRedis(s.redisClient, uuid.New().String(), time.Second, true),
 		l.NewTokenBucketDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps, time.Second, false),
 		l.NewTokenBucketDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps, time.Second, true),
+		l.NewTokenBucketMemcached(s.memcacheClient, uuid.New().String(), time.Second, false),
+		l.NewTokenBucketMemcached(s.memcacheClient, uuid.New().String(), time.Second, true),
 	}
 }
 
