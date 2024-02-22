@@ -52,6 +52,7 @@ Most common implementations are already provided.
 - `Concurrent buffer`
     - in-memory (local)
     - redis
+    - memcached
     
     Allows concurrent requests up to the given capacity.  
     Requires a lock (provided).
