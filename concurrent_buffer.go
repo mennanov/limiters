@@ -172,8 +172,8 @@ func NewConcurrentBufferMemcached(cli *memcache.Client, key string, ttl time.Dur
 }
 
 type SortedSetNode struct {
-	Score int64 // Time.UnixNano()
-	Value string
+	CreatedAt int64
+	Value     string
 }
 
 // Add adds the request with the given key to the slice in Memcached and returns the total number of requests in it.
@@ -197,24 +197,16 @@ func (c *ConcurrentBufferMemcached) Add(ctx context.Context, element string) (in
 			casId = item.CasID
 			b := bytes.NewBuffer(item.Value)
 			var oldNodes []SortedSetNode
-			err = gob.NewDecoder(b).Decode(&oldNodes)
-			if err != nil {
-				return
-			}
-			for len(oldNodes) > 0 {
-				node := oldNodes[0]
-				oldNodes = oldNodes[1:]
-				if node.Score > now.UnixNano() {
+			_ = gob.NewDecoder(b).Decode(&oldNodes)
+			for _, node := range oldNodes {
+				if node.CreatedAt > now.UnixNano() {
 					newNodes = append(newNodes, node)
 				}
 			}
 		}
-		newNodes = append(newNodes, SortedSetNode{Score: now.Add(c.ttl).UnixNano(), Value: element})
+		newNodes = append(newNodes, SortedSetNode{CreatedAt: now.Add(c.ttl).UnixNano(), Value: element})
 		var b bytes.Buffer
-		err = gob.NewEncoder(&b).Encode(newNodes)
-		if err != nil {
-			return
-		}
+		_ = gob.NewEncoder(&b).Encode(newNodes)
 		item = &memcache.Item{
 			Key:   c.key,
 			Value: b.Bytes(),
@@ -258,14 +250,9 @@ func (c *ConcurrentBufferMemcached) Remove(ctx context.Context, key string) erro
 	}
 	casId = item.CasID
 	var oldNodes []SortedSetNode
-	err = gob.NewDecoder(bytes.NewBuffer(item.Value)).Decode(&oldNodes)
-	if err != nil {
-		return errors.Wrap(err, "failed to Decode")
-	}
-	for len(oldNodes) > 0 {
-		node := oldNodes[0]
-		oldNodes = oldNodes[1:]
-		if node.Score > now.UnixNano() {
+	_ = gob.NewDecoder(bytes.NewBuffer(item.Value)).Decode(&oldNodes)
+	for _, node := range oldNodes {
+		if node.CreatedAt > now.UnixNano() {
 			if node.Value == key && !deleted {
 				deleted = true
 			} else {
@@ -275,10 +262,7 @@ func (c *ConcurrentBufferMemcached) Remove(ctx context.Context, key string) erro
 	}
 
 	var b bytes.Buffer
-	err = gob.NewEncoder(&b).Encode(newNodes)
-	if err != nil {
-		return errors.Wrap(err, "failed to Encode")
-	}
+	_ = gob.NewEncoder(&b).Encode(newNodes)
 	item = &memcache.Item{
 		Key:   c.key,
 		Value: b.Bytes(),
