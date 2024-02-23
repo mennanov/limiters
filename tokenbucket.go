@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/gob"
 	"fmt"
-	"github.com/bradfitz/gomemcache/memcache"
 	"strconv"
 	"sync"
 	"time"
@@ -14,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/pkg/errors"
 	"github.com/redis/go-redis/v9"
 	"go.etcd.io/etcd/api/v3/mvccpb"
@@ -481,6 +481,98 @@ func (t *TokenBucketRedis) SetState(ctx context.Context, state TokenBucketState)
 	return errors.Wrap(err, "failed to save keys to redis")
 }
 
+// TokenBucketMemcached is a Memcached implementation of a TokenBucketStateBackend.
+//
+// Memcached is a distributed memory object caching system.
+type TokenBucketMemcached struct {
+	cli       *memcache.Client
+	key       string
+	ttl       time.Duration
+	raceCheck bool
+	casId     uint64
+}
+
+// NewTokenBucketMemcached creates a new TokenBucketMemcached instance.
+// Key is the key used to store all the keys used in this implementation in Memcached.
+// TTL is the TTL of the stored keys.
+//
+// If raceCheck is true and the keys in Memcached are modified in between State() and SetState() calls then
+// ErrRaceCondition is returned.
+// This adds an extra overhead since a Lua script has to be executed on the Memcached side which locks the entire database.
+func NewTokenBucketMemcached(cli *memcache.Client, key string, ttl time.Duration, raceCheck bool) *TokenBucketMemcached {
+	return &TokenBucketMemcached{cli: cli, key: key + ":TokenBucket", ttl: ttl, raceCheck: raceCheck}
+}
+
+// State gets the bucket's state from Memcached.
+func (t *TokenBucketMemcached) State(ctx context.Context) (TokenBucketState, error) {
+	var item *memcache.Item
+	var state TokenBucketState
+	var err error
+
+	done := make(chan struct{}, 1)
+	t.casId = 0
+
+	go func() {
+		defer close(done)
+		item, err = t.cli.Get(t.key)
+	}()
+
+	select {
+	case <-done:
+
+	case <-ctx.Done():
+		return state, ctx.Err()
+	}
+
+	if err != nil {
+		if errors.Is(err, memcache.ErrCacheMiss) {
+			// Keys don't exist, return the initial state.
+			return state, nil
+		}
+		return state, errors.Wrap(err, "failed to get key from memcached")
+	}
+	b := bytes.NewBuffer(item.Value)
+	err = gob.NewDecoder(b).Decode(&state)
+	if err != nil {
+		return state, errors.Wrap(err, "failed to Decode")
+	}
+	t.casId = item.CasID
+	return state, nil
+}
+
+// SetState updates the state in Memcached.
+func (t *TokenBucketMemcached) SetState(ctx context.Context, state TokenBucketState) error {
+	var err error
+	done := make(chan struct{}, 1)
+	var b bytes.Buffer
+	err = gob.NewEncoder(&b).Encode(state)
+	if err != nil {
+		return errors.Wrap(err, "failed to Encode")
+	}
+	go func() {
+		defer close(done)
+		item := &memcache.Item{
+			Key:   t.key,
+			Value: b.Bytes(),
+			CasID: t.casId,
+		}
+		if t.raceCheck && t.casId > 0 {
+			err = t.cli.CompareAndSwap(item)
+		} else {
+			err = t.cli.Set(item)
+		}
+	}()
+
+	select {
+	case <-done:
+
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	return errors.Wrap(err, "failed to save keys to memcached")
+}
+
 // TokenBucketDynamoDB is a DynamoDB implementation of a TokenBucketStateBackend.
 type TokenBucketDynamoDB struct {
 	client        *dynamodb.Client
@@ -608,101 +700,4 @@ func (t *TokenBucketDynamoDB) loadStateFromDynamoDB(resp *dynamodb.GetItemOutput
 	}
 
 	return state, nil
-}
-
-// TokenBucketMemcached is a Memcached implementation of a TokenBucketStateBackend.
-//
-// Memcached is a distributed memory object caching system.
-type TokenBucketMemcached struct {
-	cli       *memcache.Client
-	key       string
-	ttl       time.Duration
-	raceCheck bool
-	casId     uint64
-}
-
-// NewTokenBucketMemcached creates a new TokenBucketMemcached instance.
-// Key is the key used to store all the keys used in this implementation in Memcached.
-// TTL is the TTL of the stored keys.
-//
-// If raceCheck is true and the keys in Memcached are modified in between State() and SetState() calls then
-// ErrRaceCondition is returned.
-// This adds an extra overhead since a Lua script has to be executed on the Memcached side which locks the entire database.
-func NewTokenBucketMemcached(cli *memcache.Client, key string, ttl time.Duration, raceCheck bool) *TokenBucketMemcached {
-	return &TokenBucketMemcached{cli: cli, key: key + ":TokenBucket", ttl: ttl, raceCheck: raceCheck}
-}
-
-// State gets the bucket's state from Memcached.
-func (t *TokenBucketMemcached) State(ctx context.Context) (TokenBucketState, error) {
-	var item *memcache.Item
-	var state TokenBucketState
-	var err error
-
-	done := make(chan struct{}, 1)
-	t.casId = 0
-
-	go func() {
-		defer close(done)
-		item, err = t.cli.Get(t.key)
-	}()
-
-	select {
-	case <-done:
-
-	case <-ctx.Done():
-		return state, ctx.Err()
-	}
-
-	if err != nil {
-		if errors.Is(err, memcache.ErrCacheMiss) {
-			// Keys don't exist, return the initial state.
-			return state, nil
-		} else {
-			return state, errors.Wrap(err, "failed to get key from memcached")
-		}
-	}
-	b := bytes.NewBuffer(item.Value)
-	err = gob.NewDecoder(b).Decode(&state)
-	if err != nil {
-		return state, errors.Wrap(err, "failed to Decide")
-	}
-	t.casId = item.CasID
-	return state, nil
-}
-
-// SetState updates the state in Memcached.
-func (t *TokenBucketMemcached) SetState(ctx context.Context, state TokenBucketState) error {
-	var err error
-	done := make(chan struct{}, 1)
-	var b bytes.Buffer
-	err = gob.NewEncoder(&b).Encode(state)
-	if err != nil {
-		return errors.Wrap(err, "failed to Encode")
-	}
-	go func() {
-		defer close(done)
-		if t.raceCheck && t.casId > 0 {
-			err = t.cli.CompareAndSwap(&memcache.Item{
-				Key:        t.key,
-				Value:      b.Bytes(),
-				Expiration: int32(time.Now().Add(t.ttl).Unix()),
-				CasID:      t.casId,
-			})
-		} else {
-			err = t.cli.Set(&memcache.Item{
-				Key:        t.key,
-				Value:      b.Bytes(),
-				Expiration: int32(time.Now().Add(t.ttl).Unix()),
-			})
-		}
-	}()
-
-	select {
-	case <-done:
-
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-
-	return errors.Wrap(err, "failed to save keys to memcached")
 }

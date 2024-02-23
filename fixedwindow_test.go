@@ -22,8 +22,8 @@ func (s *LimitersTestSuite) fixedWindowIncrementers() []l.FixedWindowIncrementer
 	return []l.FixedWindowIncrementer{
 		l.NewFixedWindowInMemory(),
 		l.NewFixedWindowRedis(s.redisClient, uuid.New().String()),
-		l.NewFixedWindowDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps),
 		l.NewFixedWindowMemcached(s.memcacheClient, uuid.New().String()),
+		l.NewFixedWindowDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps),
 	}
 }
 

@@ -11,9 +11,9 @@ Most common implementations are already provided.
 - [`Token bucket`](https://en.wikipedia.org/wiki/Token_bucket)
     - in-memory (local)
     - redis
+    - memcached
     - etcd
     - dynamodb
-    - memcached
 
     Allows requests at a certain input rate with possible bursts configured by the capacity parameter.  
     The output rate equals to the input rate.  
@@ -22,9 +22,9 @@ Most common implementations are already provided.
 - [`Leaky bucket`](https://en.wikipedia.org/wiki/Leaky_bucket#As_a_queue)
     - in-memory (local)
     - redis
+    - memcached
     - etcd
     - dynamodb
-    - memcached
 
     Puts requests in a FIFO queue to be processed at a constant rate.  
     There are no restrictions on the input rate except for the capacity of the queue.  
@@ -33,8 +33,8 @@ Most common implementations are already provided.
 - [`Fixed window counter`](https://konghq.com/blog/how-to-design-a-scalable-rate-limiting-algorithm/)
     - in-memory (local)
     - redis
-    - dynamodb
     - memcached
+    - dynamodb
 
     Simple and resources efficient algorithm that does not need a lock.  
     Precision may be adjusted by the size of the window.  
@@ -43,8 +43,8 @@ Most common implementations are already provided.
 - [`Sliding window counter`](https://konghq.com/blog/how-to-design-a-scalable-rate-limiting-algorithm/)
     - in-memory (local)
     - redis
-    - dynamodb
     - memcached
+    - dynamodb
 
     Smoothes out the bursts around the boundary between 2 adjacent windows.  
     Needs as twice more memory as the `Fixed Window` algorithm (2 windows instead of 1 at a time).  
@@ -133,7 +133,7 @@ Supported backends:
 
 Run tests locally:
 ```bash
-docker-compose up -d  # start etcd, Redis, zookeeper, consul, memcached, and localstack
+docker-compose up -d  # start etcd, Redis, memcached, zookeeper, consul, and localstack
 ETCD_ENDPOINTS="127.0.0.1:2379" REDIS_ADDR="127.0.0.1:6379" ZOOKEEPER_ENDPOINTS="127.0.0.1" CONSUL_ADDR="127.0.0.1:8500" AWS_ADDR="127.0.0.1:8000" MEMCACHED_ADDR="127.0.0.1:11211" go test -race -v
 ```
 

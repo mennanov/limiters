@@ -176,7 +176,7 @@ type SortedSetNode struct {
 	Value string
 }
 
-// Add adds the request with the given key to the serialize slice in Memcached and returns the total number of requests in it.
+// Add adds the request with the given key to the slice in Memcached and returns the total number of requests in it.
 // It also removes the keys with expired TTL.
 func (c *ConcurrentBufferMemcached) Add(ctx context.Context, element string) (int64, error) {
 	var err error
@@ -191,7 +191,6 @@ func (c *ConcurrentBufferMemcached) Add(ctx context.Context, element string) (in
 		item, err = c.cli.Get(c.key)
 		if err != nil {
 			if !errors.Is(err, memcache.ErrCacheMiss) {
-				err = errors.Wrap(err, "failed to Get")
 				return
 			}
 		} else {
@@ -200,7 +199,6 @@ func (c *ConcurrentBufferMemcached) Add(ctx context.Context, element string) (in
 			var oldNodes []SortedSetNode
 			err = gob.NewDecoder(b).Decode(&oldNodes)
 			if err != nil {
-				err = errors.Wrap(err, "failed to Decode")
 				return
 			}
 			for len(oldNodes) > 0 {
@@ -215,30 +213,17 @@ func (c *ConcurrentBufferMemcached) Add(ctx context.Context, element string) (in
 		var b bytes.Buffer
 		err = gob.NewEncoder(&b).Encode(newNodes)
 		if err != nil {
-			err = errors.Wrap(err, "failed to Encode")
 			return
 		}
+		item = &memcache.Item{
+			Key:   c.key,
+			Value: b.Bytes(),
+			CasID: casId,
+		}
 		if casId > 0 {
-			err = c.cli.CompareAndSwap(&memcache.Item{
-				Key:        c.key,
-				Value:      b.Bytes(),
-				Expiration: int32(c.clock.Now().Add(c.ttl).Unix()),
-				CasID:      casId,
-			})
-			if err != nil {
-				err = errors.Wrap(err, "failed to CompareAndSwap")
-				return
-			}
+			err = c.cli.CompareAndSwap(item)
 		} else {
-			err = c.cli.Add(&memcache.Item{
-				Key:        c.key,
-				Value:      b.Bytes(),
-				Expiration: int32(c.clock.Now().Add(c.ttl).Unix()),
-			})
-			if err != nil {
-				err = errors.Wrap(err, "failed to Add")
-				return
-			}
+			err = c.cli.Add(item)
 		}
 	}()
 
@@ -250,15 +235,14 @@ func (c *ConcurrentBufferMemcached) Add(ctx context.Context, element string) (in
 		if err != nil {
 			if errors.Is(err, memcache.ErrCASConflict) || errors.Is(err, memcache.ErrNotStored) || errors.Is(err, memcache.ErrCacheMiss) {
 				return c.Add(ctx, element)
-			} else {
-				return 0, errors.Wrap(err, "failed to add in memcached")
 			}
+			return 0, errors.Wrap(err, "failed to add in memcached")
 		}
 		return int64(len(newNodes)), nil
 	}
 }
 
-// Remove removes the request identified by the key from the serialized slice in Memcached.
+// Remove removes the request identified by the key from the slice in Memcached.
 func (c *ConcurrentBufferMemcached) Remove(ctx context.Context, key string) error {
 	var err error
 	now := c.clock.Now()
@@ -269,60 +253,40 @@ func (c *ConcurrentBufferMemcached) Remove(ctx context.Context, key string) erro
 	if err != nil {
 		if errors.Is(err, memcache.ErrCacheMiss) {
 			return nil
-		} else {
-			return errors.Wrap(err, "failed to Get")
 		}
-	} else {
-		casId = item.CasID
-		var oldNodes []SortedSetNode
-		err = gob.NewDecoder(bytes.NewBuffer(item.Value)).Decode(&oldNodes)
-		if err != nil {
-			return errors.Wrap(err, "failed to Decode")
-		}
-		for len(oldNodes) > 0 {
-			node := oldNodes[0]
-			oldNodes = oldNodes[1:]
-			if node.Score > now.UnixNano() {
-				if node.Value == key && !deleted {
-					deleted = true
-				} else {
-					newNodes = append(newNodes, node)
-				}
+		return errors.Wrap(err, "failed to Get")
+	}
+	casId = item.CasID
+	var oldNodes []SortedSetNode
+	err = gob.NewDecoder(bytes.NewBuffer(item.Value)).Decode(&oldNodes)
+	if err != nil {
+		return errors.Wrap(err, "failed to Decode")
+	}
+	for len(oldNodes) > 0 {
+		node := oldNodes[0]
+		oldNodes = oldNodes[1:]
+		if node.Score > now.UnixNano() {
+			if node.Value == key && !deleted {
+				deleted = true
+			} else {
+				newNodes = append(newNodes, node)
 			}
 		}
 	}
+
 	var b bytes.Buffer
 	err = gob.NewEncoder(&b).Encode(newNodes)
 	if err != nil {
 		return errors.Wrap(err, "failed to Encode")
 	}
-	if casId > 0 {
-		err = c.cli.CompareAndSwap(&memcache.Item{
-			Key:        c.key,
-			Value:      b.Bytes(),
-			Expiration: int32(c.clock.Now().Add(c.ttl).Unix()),
-			CasID:      casId,
-		})
-		if err != nil {
-			if errors.Is(err, memcache.ErrCASConflict) || errors.Is(err, memcache.ErrNotStored) || errors.Is(err, memcache.ErrCacheMiss) {
-				return c.Remove(ctx, key)
-			} else {
-				return errors.Wrap(err, "failed to CompareAndSwap")
-			}
-		}
-	} else {
-		err = c.cli.Add(&memcache.Item{
-			Key:        c.key,
-			Value:      b.Bytes(),
-			Expiration: int32(c.clock.Now().Add(c.ttl).Unix()),
-		})
-		if err != nil {
-			if errors.Is(err, memcache.ErrCASConflict) || errors.Is(err, memcache.ErrNotStored) || errors.Is(err, memcache.ErrCacheMiss) {
-				return c.Remove(ctx, key)
-			} else {
-				return errors.Wrap(err, "failed to Add")
-			}
-		}
+	item = &memcache.Item{
+		Key:   c.key,
+		Value: b.Bytes(),
+		CasID: casId,
 	}
-	return err
+	err = c.cli.CompareAndSwap(item)
+	if err != nil && (errors.Is(err, memcache.ErrCASConflict) || errors.Is(err, memcache.ErrNotStored) || errors.Is(err, memcache.ErrCacheMiss)) {
+		return c.Remove(ctx, key)
+	}
+	return errors.Wrap(err, "failed to CompareAndSwap")
 }

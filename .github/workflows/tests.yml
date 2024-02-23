@@ -23,6 +23,10 @@ jobs:
           ALLOW_EMPTY_PASSWORD: yes
         ports:
           - 6379:6379
+      memcached:
+        image: bitnami/memcached
+        ports:
+          - 11211:11211
       consul:
         image: bitnami/consul
         ports:
@@ -33,10 +37,6 @@ jobs:
           ALLOW_ANONYMOUS_LOGIN: yes
         ports:
           - 2181:2181
-      memcached:
-        image: bitnami/memcached
-        ports:
-          - 11211:11211
 
     steps:
       - uses: actions/checkout@v3
