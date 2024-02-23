@@ -34,6 +34,7 @@ Most common implementations are already provided.
     - in-memory (local)
     - redis
     - dynamodb
+    - memcached
 
     Simple and resources efficient algorithm that does not need a lock.  
     Precision may be adjusted by the size of the window.  
