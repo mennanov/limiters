@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/pkg/errors"
 	"github.com/redis/go-redis/v9"
 )
@@ -268,4 +269,70 @@ func (s *SlidingWindowDynamoDB) Increment(ctx context.Context, prev, curr time.T
 	}
 
 	return priorCount, currentCount, nil
+}
+
+// SlidingWindowMemcached implements SlidingWindow in Memcached.
+type SlidingWindowMemcached struct {
+	cli    *memcache.Client
+	prefix string
+}
+
+// NewSlidingWindowMemcached creates a new instance of SlidingWindowMemcached.
+func NewSlidingWindowMemcached(cli *memcache.Client, prefix string) *SlidingWindowMemcached {
+	return &SlidingWindowMemcached{cli: cli, prefix: prefix + ":SlidingWindow"}
+}
+
+// Increment increments the current window's counter in Memcached and returns the number of requests in the previous window
+// and the current one.
+func (s *SlidingWindowMemcached) Increment(ctx context.Context, prev, curr time.Time, ttl time.Duration) (int64, int64, error) {
+	var prevCount uint64
+	var currCount uint64
+	var err error
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+
+		var item *memcache.Item
+		prevKey := fmt.Sprintf("%s:%d", s.prefix, prev.UnixNano())
+		item, err = s.cli.Get(prevKey)
+		if err != nil {
+			if errors.Is(err, memcache.ErrCacheMiss) {
+				err = nil
+				prevCount = 0
+			} else {
+				return
+			}
+		} else {
+			prevCount, err = strconv.ParseUint(string(item.Value), 10, 64)
+			if err != nil {
+				return
+			}
+		}
+
+		currKey := fmt.Sprintf("%s:%d", s.prefix, curr.UnixNano())
+		currCount, err = s.cli.Increment(currKey, 1)
+		if err != nil && errors.Is(err, memcache.ErrCacheMiss) {
+			currCount = 1
+			err = s.cli.Add(&memcache.Item{
+				Key:        currKey,
+				Value:      []byte(strconv.FormatUint(currCount, 10)),
+				Expiration: int32(time.Now().Add(ttl).Unix()),
+			})
+		}
+	}()
+
+	select {
+	case <-done:
+		if err != nil {
+			if errors.Is(err, memcache.ErrNotStored) {
+				return s.Increment(ctx, prev, curr, ttl)
+			} else {
+				return 0, 0, err
+			}
+		} else {
+			return int64(prevCount), int64(currCount), nil
+		}
+	case <-ctx.Done():
+		return 0, 0, ctx.Err()
+	}
 }

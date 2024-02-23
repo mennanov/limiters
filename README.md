@@ -44,6 +44,7 @@ Most common implementations are already provided.
     - in-memory (local)
     - redis
     - dynamodb
+    - memcached
 
     Smoothes out the bursts around the boundary between 2 adjacent windows.  
     Needs as twice more memory as the `Fixed Window` algorithm (2 windows instead of 1 at a time).  
