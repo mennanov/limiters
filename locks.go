@@ -150,26 +150,33 @@ func (l *LockRedis) Unlock(ctx context.Context) error {
 }
 
 // LockMemcached is a wrapper around github.com/alessandro-c/gomemcached-lock that implements the DistLocker interface.
+// It is caller's responsibility to make sure the uniqueness of mutexName, and not to use the same key in multiple
+// Memcached-based implementations
 type LockMemcached struct {
 	locker    *lock.Locker
 	mutexName string
+	backoff   backoff.BackOff
 }
 
 // NewLockMemcached creates a new instance of LockMemcached.
-func NewLockMemcached(client *memcache.Client, mutexName string) *LockMemcached {
+// b the backoff policy for retrying an operation. Default to retry every 100ms for 100 times (10 seconds).
+func NewLockMemcached(client *memcache.Client, mutexName string, b backoff.BackOff) *LockMemcached {
 	adapter := gomemcache.New(client)
 	locker := lock.New(adapter, mutexName, "")
+	if b == nil {
+		b = backoff.WithMaxRetries(backoff.NewConstantBackOff(100*time.Millisecond), 100)
+	}
 	return &LockMemcached{
 		locker:    locker,
 		mutexName: mutexName,
+		backoff:   b,
 	}
 }
 
 // Lock locks the lock in Memcached.
 func (l *LockMemcached) Lock(ctx context.Context) error {
 	o := func() error { return l.locker.Lock(time.Minute) }
-	b := backoff.WithMaxRetries(backoff.NewConstantBackOff(10*time.Millisecond), 1000)
-	return backoff.Retry(o, b)
+	return backoff.Retry(o, l.backoff)
 }
 
 // Unlock unlocks the lock in Memcached.

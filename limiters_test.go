@@ -157,7 +157,7 @@ func (s *LimitersTestSuite) distLockers(generateKeys bool) []l.DistLocker {
 		l.NewLockConsul(consulLock),
 		l.NewLockZookeeper(zk.NewLock(s.zkConn, zkKey, zk.WorldACL(zk.PermAll))),
 		l.NewLockRedis(goredis.NewPool(s.redisClient), redisKey),
-		l.NewLockMemcached(s.memcacheClient, memcacheKey),
+		l.NewLockMemcached(s.memcacheClient, memcacheKey, nil),
 	}
 }
 
