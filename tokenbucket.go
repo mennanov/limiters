@@ -500,7 +500,7 @@ type TokenBucketMemcached struct {
 // ErrRaceCondition is returned.
 // This adds an extra overhead since a Lua script has to be executed on the Memcached side which locks the entire database.
 func NewTokenBucketMemcached(cli *memcache.Client, key string, ttl time.Duration, raceCheck bool) *TokenBucketMemcached {
-	return &TokenBucketMemcached{cli: cli, key: key + ":TokenBucket", ttl: ttl, raceCheck: raceCheck}
+	return &TokenBucketMemcached{cli: cli, key: key, ttl: ttl, raceCheck: raceCheck}
 }
 
 // State gets the bucket's state from Memcached.

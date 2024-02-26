@@ -415,7 +415,7 @@ type LeakyBucketMemcached struct {
 // If raceCheck is true and the keys in Memcached are modified in between State() and SetState() calls then
 // ErrRaceCondition is returned.
 func NewLeakyBucketMemcached(cli *memcache.Client, key string, ttl time.Duration, raceCheck bool) *LeakyBucketMemcached {
-	return &LeakyBucketMemcached{cli: cli, key: key + ":LeakyBucket", ttl: ttl, raceCheck: raceCheck}
+	return &LeakyBucketMemcached{cli: cli, key: key, ttl: ttl, raceCheck: raceCheck}
 }
 
 // State gets the bucket's state from Memcached.

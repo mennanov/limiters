@@ -158,7 +158,7 @@ type LockMemcached struct {
 // NewLockMemcached creates a new instance of LockMemcached.
 func NewLockMemcached(client *memcache.Client, mutexName string) *LockMemcached {
 	adapter := gomemcache.New(client)
-	locker := lock.New(adapter, mutexName + ":Lock", "")
+	locker := lock.New(adapter, mutexName, "")
 	return &LockMemcached{
 		locker:    locker,
 		mutexName: mutexName,

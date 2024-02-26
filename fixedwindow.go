@@ -142,7 +142,7 @@ type FixedWindowMemcached struct {
 // NewFixedWindowMemcached returns a new instance of FixedWindowMemcached.
 // Prefix is the key prefix used to store all the keys used in this implementation in Memcached.
 func NewFixedWindowMemcached(cli *memcache.Client, prefix string) *FixedWindowMemcached {
-	return &FixedWindowMemcached{cli: cli, prefix: prefix + ":FixedWindow"}
+	return &FixedWindowMemcached{cli: cli, prefix: prefix}
 }
 
 // Increment increments the window's counter in Memcached.

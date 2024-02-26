@@ -161,7 +161,7 @@ type SlidingWindowMemcached struct {
 
 // NewSlidingWindowMemcached creates a new instance of SlidingWindowMemcached.
 func NewSlidingWindowMemcached(cli *memcache.Client, prefix string) *SlidingWindowMemcached {
-	return &SlidingWindowMemcached{cli: cli, prefix: prefix + ":SlidingWindow"}
+	return &SlidingWindowMemcached{cli: cli, prefix: prefix}
 }
 
 // Increment increments the current window's counter in Memcached and returns the number of requests in the previous window

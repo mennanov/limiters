@@ -168,7 +168,7 @@ type ConcurrentBufferMemcached struct {
 // When the TTL of a key exceeds the key is removed from the buffer. This is needed in case if the process that added
 // that key to the buffer did not call Done() for some reason.
 func NewConcurrentBufferMemcached(cli *memcache.Client, key string, ttl time.Duration, clock Clock) *ConcurrentBufferMemcached {
-	return &ConcurrentBufferMemcached{clock: clock, cli: cli, key: key + ":ConcurrentBuffer", ttl: ttl}
+	return &ConcurrentBufferMemcached{clock: clock, cli: cli, key: key, ttl: ttl}
 }
 
 type SortedSetNode struct {
