@@ -129,6 +129,15 @@ Supported backends:
 - [Redis](https://redis.io/)
 - [Memcached](https://memcached.org/)
 
+## Memcached
+
+It's important to understand that memcached is not ideal for implementing reliable locks or data persistence due to its inherent limitations:
+
+- No guaranteed data retention: Memcached can evict data at any point due to memory pressure, even if it appears to have space available. This can lead to unexpected lock releases or data loss.
+- Lack of distributed locking features: Memcached doesn't offer functionalities like distributed coordination required for consistent locking across multiple servers.
+
+If memcached exists already and it is okay to handle burst traffic caused by unexpected evicted data, Memcached-based implementations are convenient, otherwise Redis-based implementations will be better choices.
+
 ## Testing
 
 Run tests locally:
