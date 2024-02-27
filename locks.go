@@ -2,6 +2,10 @@ package limiters
 
 import (
 	"context"
+	"github.com/alessandro-c/gomemcached-lock"
+	"github.com/alessandro-c/gomemcached-lock/adapters/gomemcache"
+	"github.com/bradfitz/gomemcache/memcache"
+	"github.com/cenkalti/backoff/v3"
 	"github.com/go-redsync/redsync/v4"
 	redsyncredis "github.com/go-redsync/redsync/v4/redis"
 	"github.com/hashicorp/consul/api"
@@ -9,6 +13,7 @@ import (
 	"github.com/samuel/go-zookeeper/zk"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/client/v3/concurrency"
+	"time"
 )
 
 // DistLocker is a context aware distributed locker (interface is similar to sync.Locker).
@@ -142,4 +147,43 @@ func (l *LockRedis) Unlock(ctx context.Context) error {
 		return errors.Wrap(err, "failed to unlock a mutex in redis")
 	}
 	return nil
+}
+
+// LockMemcached is a wrapper around github.com/alessandro-c/gomemcached-lock that implements the DistLocker interface.
+// It is caller's responsibility to make sure the uniqueness of mutexName, and not to use the same key in multiple
+// Memcached-based implementations
+type LockMemcached struct {
+	locker    *lock.Locker
+	mutexName string
+	backoff   backoff.BackOff
+}
+
+// NewLockMemcached creates a new instance of LockMemcached.
+// Default backoff is to retry every 100ms for 100 times (10 seconds).
+func NewLockMemcached(client *memcache.Client, mutexName string) *LockMemcached {
+	adapter := gomemcache.New(client)
+	locker := lock.New(adapter, mutexName, "")
+	b := backoff.WithMaxRetries(backoff.NewConstantBackOff(100*time.Millisecond), 100)
+	return &LockMemcached{
+		locker:    locker,
+		mutexName: mutexName,
+		backoff:   b,
+	}
+}
+
+// WithLockAcquireBackoff sets the backoff policy for retrying an operation.
+func (l *LockMemcached) WithLockAcquireBackoff(b backoff.BackOff) *LockMemcached {
+	l.backoff = b
+	return l
+}
+
+// Lock locks the lock in Memcached.
+func (l *LockMemcached) Lock(ctx context.Context) error {
+	o := func() error { return l.locker.Lock(time.Minute) }
+	return backoff.Retry(o, l.backoff)
+}
+
+// Unlock unlocks the lock in Memcached.
+func (l *LockMemcached) Unlock(ctx context.Context) error {
+	return l.locker.Release()
 }

@@ -1,7 +1,9 @@
 package limiters
 
 import (
+	"bytes"
 	"context"
+	"encoding/gob"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -12,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/pkg/errors"
 	"github.com/redis/go-redis/v9"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
@@ -394,6 +397,96 @@ func (t *LeakyBucketRedis) SetState(ctx context.Context, state LeakyBucketState)
 	}
 
 	return errors.Wrap(err, "failed to save keys to redis")
+}
+
+// LeakyBucketMemcached is a Memcached implementation of a LeakyBucketStateBackend.
+type LeakyBucketMemcached struct {
+	cli       *memcache.Client
+	key       string
+	ttl       time.Duration
+	raceCheck bool
+	casId     uint64
+}
+
+// NewLeakyBucketMemcached creates a new LeakyBucketMemcached instance.
+// Key is the key used to store all the keys used in this implementation in Memcached.
+// TTL is the TTL of the stored keys.
+//
+// If raceCheck is true and the keys in Memcached are modified in between State() and SetState() calls then
+// ErrRaceCondition is returned.
+func NewLeakyBucketMemcached(cli *memcache.Client, key string, ttl time.Duration, raceCheck bool) *LeakyBucketMemcached {
+	return &LeakyBucketMemcached{cli: cli, key: key, ttl: ttl, raceCheck: raceCheck}
+}
+
+// State gets the bucket's state from Memcached.
+func (t *LeakyBucketMemcached) State(ctx context.Context) (LeakyBucketState, error) {
+	var item *memcache.Item
+	var err error
+	state := LeakyBucketState{}
+	done := make(chan struct{}, 1)
+	go func() {
+		defer close(done)
+		item, err = t.cli.Get(t.key)
+	}()
+
+	select {
+	case <-done:
+
+	case <-ctx.Done():
+		return state, ctx.Err()
+	}
+
+	if err != nil {
+		if errors.Is(err, memcache.ErrCacheMiss) {
+			// Keys don't exist, return an empty state.
+			return state, nil
+		}
+		return state, errors.Wrap(err, "failed to get keys from memcached")
+	}
+	b := bytes.NewBuffer(item.Value)
+	err = gob.NewDecoder(b).Decode(&state)
+	if err != nil {
+		return state, errors.Wrap(err, "failed to Decode")
+	}
+	t.casId = item.CasID
+	return state, nil
+}
+
+// SetState updates the state in Memcached.
+// The provided fencing token is checked on the Memcached side before saving the keys.
+func (t *LeakyBucketMemcached) SetState(ctx context.Context, state LeakyBucketState) error {
+	var err error
+	done := make(chan struct{}, 1)
+	var b bytes.Buffer
+	err = gob.NewEncoder(&b).Encode(state)
+	if err != nil {
+		return errors.Wrap(err, "failed to Encode")
+	}
+	go func() {
+		defer close(done)
+		item := &memcache.Item{
+			Key:   t.key,
+			Value: b.Bytes(),
+			CasID: t.casId,
+		}
+		if t.raceCheck && t.casId > 0 {
+			err = t.cli.CompareAndSwap(item)
+		} else {
+			err = t.cli.Set(item)
+		}
+	}()
+
+	select {
+	case <-done:
+
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	if err != nil && (errors.Is(err, memcache.ErrCASConflict) || errors.Is(err, memcache.ErrNotStored) || errors.Is(err, memcache.ErrCacheMiss)) {
+		return ErrRaceCondition
+	}
+	return errors.Wrap(err, "failed to save keys to memcached")
 }
 
 // LeakyBucketDynamoDB is a DyanamoDB implementation of a LeakyBucketStateBackend.

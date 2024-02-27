@@ -23,6 +23,10 @@ jobs:
           ALLOW_EMPTY_PASSWORD: yes
         ports:
           - 6379:6379
+      memcached:
+        image: bitnami/memcached
+        ports:
+          - 11211:11211
       consul:
         image: bitnami/consul
         ports:
@@ -51,6 +55,7 @@ jobs:
           CONSUL_ADDR: 'localhost:8500'
           ZOOKEEPER_ENDPOINTS: 'localhost:2181'
           AWS_ADDR: 'localhost:8000'
+          MEMCACHED_ADDR: '127.0.0.1:11211'
         run: go test -race -v -coverprofile=coverage.txt -covermode=atomic ./...
       - uses: codecov/codecov-action@v3
         with:

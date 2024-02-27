@@ -15,6 +15,11 @@ services:
     ports:
       - "6379:6379"
 
+  memcached:
+    image: bitnami/memcached
+    ports:
+      - "11211:11211"
+
   consul:
     image: bitnami/consul
     ports:

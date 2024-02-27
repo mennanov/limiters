@@ -26,6 +26,7 @@ func (s *LimitersTestSuite) concurrentBufferBackends(ttl time.Duration, clock l.
 	return []l.ConcurrentBufferBackend{
 		l.NewConcurrentBufferInMemory(l.NewRegistry(), ttl, clock),
 		l.NewConcurrentBufferRedis(s.redisClient, uuid.New().String(), ttl, clock),
+		l.NewConcurrentBufferMemcached(s.memcacheClient, uuid.New().String(), ttl, clock),
 	}
 }
 

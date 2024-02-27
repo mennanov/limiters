@@ -28,6 +28,8 @@ func (s *LimitersTestSuite) leakyBucketBackends() []l.LeakyBucketStateBackend {
 		l.NewLeakyBucketEtcd(s.etcdClient, uuid.New().String(), time.Second, true),
 		l.NewLeakyBucketRedis(s.redisClient, uuid.New().String(), time.Second, false),
 		l.NewLeakyBucketRedis(s.redisClient, uuid.New().String(), time.Second, true),
+		l.NewLeakyBucketMemcached(s.memcacheClient, uuid.New().String(), time.Second, false),
+		l.NewLeakyBucketMemcached(s.memcacheClient, uuid.New().String(), time.Second, true),
 		l.NewLeakyBucketDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps, time.Second, false),
 		l.NewLeakyBucketDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps, time.Second, true),
 	}

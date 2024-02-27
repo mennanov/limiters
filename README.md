@@ -11,6 +11,7 @@ Most common implementations are already provided.
 - [`Token bucket`](https://en.wikipedia.org/wiki/Token_bucket)
     - in-memory (local)
     - redis
+    - memcached
     - etcd
     - dynamodb
 
@@ -21,6 +22,7 @@ Most common implementations are already provided.
 - [`Leaky bucket`](https://en.wikipedia.org/wiki/Leaky_bucket#As_a_queue)
     - in-memory (local)
     - redis
+    - memcached
     - etcd
     - dynamodb
 
@@ -31,6 +33,7 @@ Most common implementations are already provided.
 - [`Fixed window counter`](https://konghq.com/blog/how-to-design-a-scalable-rate-limiting-algorithm/)
     - in-memory (local)
     - redis
+    - memcached
     - dynamodb
 
     Simple and resources efficient algorithm that does not need a lock.  
@@ -40,6 +43,7 @@ Most common implementations are already provided.
 - [`Sliding window counter`](https://konghq.com/blog/how-to-design-a-scalable-rate-limiting-algorithm/)
     - in-memory (local)
     - redis
+    - memcached
     - dynamodb
 
     Smoothes out the bursts around the boundary between 2 adjacent windows.  
@@ -50,6 +54,7 @@ Most common implementations are already provided.
 - `Concurrent buffer`
     - in-memory (local)
     - redis
+    - memcached
     
     Allows concurrent requests up to the given capacity.  
     Requires a lock (provided).
@@ -122,13 +127,23 @@ Supported backends:
 - [Consul](https://www.consul.io/)
 - [Zookeeper](https://zookeeper.apache.org/)
 - [Redis](https://redis.io/)
+- [Memcached](https://memcached.org/)
+
+## Memcached
+
+It's important to understand that memcached is not ideal for implementing reliable locks or data persistence due to its inherent limitations:
+
+- No guaranteed data retention: Memcached can evict data at any point due to memory pressure, even if it appears to have space available. This can lead to unexpected lock releases or data loss.
+- Lack of distributed locking features: Memcached doesn't offer functionalities like distributed coordination required for consistent locking across multiple servers.
+
+If memcached exists already and it is okay to handle burst traffic caused by unexpected evicted data, Memcached-based implementations are convenient, otherwise Redis-based implementations will be better choices.
 
 ## Testing
 
 Run tests locally:
 ```bash
-docker-compose up -d  # start etcd, Redis, zookeeper, consul, and localstack
-ETCD_ENDPOINTS="127.0.0.1:2379" REDIS_ADDR="127.0.0.1:6379" ZOOKEEPER_ENDPOINTS="127.0.0.1" CONSUL_ADDR="127.0.0.1:8500" AWS_ADDR="127.0.0.1:8000" go test -race -v 
+docker-compose up -d  # start etcd, Redis, memcached, zookeeper, consul, and localstack
+ETCD_ENDPOINTS="127.0.0.1:2379" REDIS_ADDR="127.0.0.1:6379" ZOOKEEPER_ENDPOINTS="127.0.0.1" CONSUL_ADDR="127.0.0.1:8500" AWS_ADDR="127.0.0.1:8000" MEMCACHED_ADDR="127.0.0.1:11211" go test -race -v
 ```
 
 Run [Drone](https://drone.io) CI tests locally:

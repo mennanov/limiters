@@ -1,11 +1,14 @@
 package limiters
 
 import (
+	"bytes"
 	"context"
+	"encoding/gob"
 	"fmt"
 	"sync"
 	"time"
 
+	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/pkg/errors"
 	"github.com/redis/go-redis/v9"
 )
@@ -151,4 +154,123 @@ func (c *ConcurrentBufferRedis) Add(ctx context.Context, key string) (int64, err
 // Remove removes the request identified by the key from the sorted set in Redis.
 func (c *ConcurrentBufferRedis) Remove(ctx context.Context, key string) error {
 	return errors.Wrap(c.cli.ZRem(ctx, c.key, key).Err(), "failed to remove an item from redis set")
+}
+
+// ConcurrentBufferMemcached implements ConcurrentBufferBackend in Memcached.
+type ConcurrentBufferMemcached struct {
+	clock Clock
+	cli   *memcache.Client
+	key   string
+	ttl   time.Duration
+}
+
+// NewConcurrentBufferMemcached creates a new instance of ConcurrentBufferMemcached.
+// When the TTL of a key exceeds the key is removed from the buffer. This is needed in case if the process that added
+// that key to the buffer did not call Done() for some reason.
+func NewConcurrentBufferMemcached(cli *memcache.Client, key string, ttl time.Duration, clock Clock) *ConcurrentBufferMemcached {
+	return &ConcurrentBufferMemcached{clock: clock, cli: cli, key: key, ttl: ttl}
+}
+
+type SortedSetNode struct {
+	CreatedAt int64
+	Value     string
+}
+
+// Add adds the request with the given key to the slice in Memcached and returns the total number of requests in it.
+// It also removes the keys with expired TTL.
+func (c *ConcurrentBufferMemcached) Add(ctx context.Context, element string) (int64, error) {
+	var err error
+	done := make(chan struct{})
+	now := c.clock.Now()
+	var newNodes []SortedSetNode
+	var casId uint64 = 0
+
+	go func() {
+		defer close(done)
+		var item *memcache.Item
+		item, err = c.cli.Get(c.key)
+		if err != nil {
+			if !errors.Is(err, memcache.ErrCacheMiss) {
+				return
+			}
+		} else {
+			casId = item.CasID
+			b := bytes.NewBuffer(item.Value)
+			var oldNodes []SortedSetNode
+			_ = gob.NewDecoder(b).Decode(&oldNodes)
+			for _, node := range oldNodes {
+				if node.CreatedAt > now.UnixNano() {
+					newNodes = append(newNodes, node)
+				}
+			}
+		}
+		newNodes = append(newNodes, SortedSetNode{CreatedAt: now.Add(c.ttl).UnixNano(), Value: element})
+		var b bytes.Buffer
+		_ = gob.NewEncoder(&b).Encode(newNodes)
+		item = &memcache.Item{
+			Key:   c.key,
+			Value: b.Bytes(),
+			CasID: casId,
+		}
+		if casId > 0 {
+			err = c.cli.CompareAndSwap(item)
+		} else {
+			err = c.cli.Add(item)
+		}
+	}()
+
+	select {
+	case <-ctx.Done():
+		return 0, ctx.Err()
+
+	case <-done:
+		if err != nil {
+			if errors.Is(err, memcache.ErrCASConflict) || errors.Is(err, memcache.ErrNotStored) || errors.Is(err, memcache.ErrCacheMiss) {
+				return c.Add(ctx, element)
+			}
+			return 0, errors.Wrap(err, "failed to add in memcached")
+		}
+		return int64(len(newNodes)), nil
+	}
+}
+
+// Remove removes the request identified by the key from the slice in Memcached.
+func (c *ConcurrentBufferMemcached) Remove(ctx context.Context, key string) error {
+	var err error
+	now := c.clock.Now()
+	var newNodes []SortedSetNode
+	var casId uint64 = 0
+	deleted := false
+	item, err := c.cli.Get(c.key)
+	if err != nil {
+		if errors.Is(err, memcache.ErrCacheMiss) {
+			return nil
+		}
+		return errors.Wrap(err, "failed to Get")
+	}
+	casId = item.CasID
+	var oldNodes []SortedSetNode
+	_ = gob.NewDecoder(bytes.NewBuffer(item.Value)).Decode(&oldNodes)
+	for _, node := range oldNodes {
+		if node.CreatedAt > now.UnixNano() {
+			if node.Value == key && !deleted {
+				deleted = true
+			} else {
+				newNodes = append(newNodes, node)
+			}
+		}
+	}
+
+	var b bytes.Buffer
+	_ = gob.NewEncoder(&b).Encode(newNodes)
+	item = &memcache.Item{
+		Key:   c.key,
+		Value: b.Bytes(),
+		CasID: casId,
+	}
+	err = c.cli.CompareAndSwap(item)
+	if err != nil && (errors.Is(err, memcache.ErrCASConflict) || errors.Is(err, memcache.ErrNotStored) || errors.Is(err, memcache.ErrCacheMiss)) {
+		return c.Remove(ctx, key)
+	}
+	return errors.Wrap(err, "failed to CompareAndSwap")
 }

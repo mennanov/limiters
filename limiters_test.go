@@ -13,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/go-redsync/redsync/v4/redis/goredis/v9"
 	"github.com/google/uuid"
 	"github.com/hashicorp/consul/api"
@@ -69,6 +70,7 @@ type LimitersTestSuite struct {
 	logger             *l.StdLogger
 	dynamodbClient     *dynamodb.Client
 	dynamoDBTableProps l.DynamoDBTableProperties
+	memcacheClient     *memcache.Client
 }
 
 func (s *LimitersTestSuite) SetupSuite() {
@@ -112,12 +114,16 @@ func (s *LimitersTestSuite) SetupSuite() {
 	s.Require().NoError(CreateTestDynamoDBTable(context.Background(), s.dynamodbClient))
 	s.dynamoDBTableProps, err = l.LoadDynamoDBTableProperties(context.Background(), s.dynamodbClient, testDynamoDBTableName)
 	s.Require().NoError(err)
+
+	s.memcacheClient = memcache.New(strings.Split(os.Getenv("MEMCACHED_ADDR"), ",")...)
+	s.Require().NoError(s.memcacheClient.Ping())
 }
 
 func (s *LimitersTestSuite) TearDownSuite() {
 	s.Assert().NoError(s.etcdClient.Close())
 	s.Assert().NoError(s.redisClient.Close())
 	s.Assert().NoError(DeleteTestDynamoDBTable(context.Background(), s.dynamodbClient))
+	s.Assert().NoError(s.memcacheClient.Close())
 }
 
 func TestBucketTestSuite(t *testing.T) {
@@ -136,11 +142,13 @@ func (s *LimitersTestSuite) distLockers(generateKeys bool) []l.DistLocker {
 	etcdKey := randomKey
 	zkKey := "/" + randomKey
 	redisKey := randomKey
+	memcacheKey := randomKey
 	if !generateKeys {
 		consulKey = "dist_locker"
 		etcdKey = "dist_locker"
 		zkKey = "/dist_locker"
 		redisKey = "dist_locker"
+		memcacheKey = "dist_locker"
 	}
 	consulLock, err := s.consulClient.LockKey(consulKey)
 	s.Require().NoError(err)
@@ -149,6 +157,7 @@ func (s *LimitersTestSuite) distLockers(generateKeys bool) []l.DistLocker {
 		l.NewLockConsul(consulLock),
 		l.NewLockZookeeper(zk.NewLock(s.zkConn, zkKey, zk.WorldACL(zk.PermAll))),
 		l.NewLockRedis(goredis.NewPool(s.redisClient), redisKey),
+		l.NewLockMemcached(s.memcacheClient, memcacheKey),
 	}
 }
 

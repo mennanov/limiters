@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/pkg/errors"
 	"github.com/redis/go-redis/v9"
 )
@@ -127,6 +128,51 @@ func (f *FixedWindowRedis) Increment(ctx context.Context, window time.Time, ttl 
 			return 0, errors.Wrap(err, "redis transaction failed")
 		}
 		return incr.Val(), incr.Err()
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	}
+}
+
+// FixedWindowMemcached implements FixedWindow in Memcached.
+type FixedWindowMemcached struct {
+	cli    *memcache.Client
+	prefix string
+}
+
+// NewFixedWindowMemcached returns a new instance of FixedWindowMemcached.
+// Prefix is the key prefix used to store all the keys used in this implementation in Memcached.
+func NewFixedWindowMemcached(cli *memcache.Client, prefix string) *FixedWindowMemcached {
+	return &FixedWindowMemcached{cli: cli, prefix: prefix}
+}
+
+// Increment increments the window's counter in Memcached.
+func (f *FixedWindowMemcached) Increment(ctx context.Context, window time.Time, ttl time.Duration) (int64, error) {
+	var newValue uint64
+	var err error
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		key := fmt.Sprintf("%s:%d", f.prefix, window.UnixNano())
+		newValue, err = f.cli.Increment(key, 1)
+		if err != nil && errors.Is(err, memcache.ErrCacheMiss) {
+			newValue = 1
+			item := &memcache.Item{
+				Key:   key,
+				Value: []byte(strconv.FormatUint(newValue, 10)),
+			}
+			err = f.cli.Add(item)
+		}
+	}()
+
+	select {
+	case <-done:
+		if err != nil {
+			if errors.Is(err, memcache.ErrNotStored) {
+				return f.Increment(ctx, window, ttl)
+			}
+			return 0, errors.Wrap(err, "failed to Increment or Add")
+		}
+		return int64(newValue), err
 	case <-ctx.Done():
 		return 0, ctx.Err()
 	}

@@ -22,6 +22,7 @@ func (s *LimitersTestSuite) slidingWindowIncrementers() []l.SlidingWindowIncreme
 	return []l.SlidingWindowIncrementer{
 		l.NewSlidingWindowInMemory(),
 		l.NewSlidingWindowRedis(s.redisClient, uuid.New().String()),
+		l.NewSlidingWindowMemcached(s.memcacheClient, uuid.New().String()),
 		l.NewSlidingWindowDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps),
 	}
 }
