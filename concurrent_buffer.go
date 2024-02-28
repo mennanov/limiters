@@ -106,7 +106,7 @@ func (c *ConcurrentBufferInMemory) Remove(_ context.Context, key string) error {
 // ConcurrentBufferRedis implements ConcurrentBufferBackend in Redis.
 type ConcurrentBufferRedis struct {
 	clock Clock
-	cli   *redis.Client
+	cli   redis.UniversalClient
 	key   string
 	ttl   time.Duration
 }
@@ -114,7 +114,7 @@ type ConcurrentBufferRedis struct {
 // NewConcurrentBufferRedis creates a new instance of ConcurrentBufferRedis.
 // When the TTL of a key exceeds the key is removed from the buffer. This is needed in case if the process that added
 // that key to the buffer did not call Done() for some reason.
-func NewConcurrentBufferRedis(cli *redis.Client, key string, ttl time.Duration, clock Clock) *ConcurrentBufferRedis {
+func NewConcurrentBufferRedis(cli redis.UniversalClient, key string, ttl time.Duration, clock Clock) *ConcurrentBufferRedis {
 	return &ConcurrentBufferRedis{clock: clock, cli: cli, key: key, ttl: ttl}
 }
 
