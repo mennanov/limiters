@@ -105,12 +105,12 @@ func (s *SlidingWindowInMemory) Increment(ctx context.Context, prev, curr time.T
 
 // SlidingWindowRedis implements SlidingWindow in Redis.
 type SlidingWindowRedis struct {
-	cli    *redis.Client
+	cli    redis.UniversalClient
 	prefix string
 }
 
 // NewSlidingWindowRedis creates a new instance of SlidingWindowRedis.
-func NewSlidingWindowRedis(cli *redis.Client, prefix string) *SlidingWindowRedis {
+func NewSlidingWindowRedis(cli redis.UniversalClient, prefix string) *SlidingWindowRedis {
 	return &SlidingWindowRedis{cli: cli, prefix: prefix}
 }
 

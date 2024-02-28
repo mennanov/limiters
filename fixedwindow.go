@@ -97,13 +97,13 @@ func (f *FixedWindowInMemory) Increment(ctx context.Context, window time.Time, _
 
 // FixedWindowRedis implements FixedWindow in Redis.
 type FixedWindowRedis struct {
-	cli    *redis.Client
+	cli    redis.UniversalClient
 	prefix string
 }
 
 // NewFixedWindowRedis returns a new instance of FixedWindowRedis.
 // Prefix is the key prefix used to store all the keys used in this implementation in Redis.
-func NewFixedWindowRedis(cli *redis.Client, prefix string) *FixedWindowRedis {
+func NewFixedWindowRedis(cli redis.UniversalClient, prefix string) *FixedWindowRedis {
 	return &FixedWindowRedis{cli: cli, prefix: prefix}
 }
 

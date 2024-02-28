@@ -64,7 +64,7 @@ func (c *fakeClock) reset() {
 type LimitersTestSuite struct {
 	suite.Suite
 	etcdClient         *clientv3.Client
-	redisClient        *redis.Client
+	redisClient        redis.UniversalClient
 	consulClient       *api.Client
 	zkConn             *zk.Conn
 	logger             *l.StdLogger
