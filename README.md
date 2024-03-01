@@ -142,8 +142,7 @@ If memcached exists already and it is okay to handle burst traffic caused by une
 
 Run tests locally:
 ```bash
-docker-compose up -d  # start etcd, Redis, memcached, zookeeper, consul, and localstack
-ETCD_ENDPOINTS="127.0.0.1:2379" REDIS_ADDR="127.0.0.1:6379" ZOOKEEPER_ENDPOINTS="127.0.0.1" CONSUL_ADDR="127.0.0.1:8500" AWS_ADDR="127.0.0.1:8000" MEMCACHED_ADDR="127.0.0.1:11211" go test -race -v
+make
 ```
 
 Run [Drone](https://drone.io) CI tests locally:

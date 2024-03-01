@@ -111,6 +111,7 @@ func (s *LimitersTestSuite) SetupSuite() {
 
 	s.dynamodbClient = dynamodb.NewFromConfig(awsCfg)
 
+	_ = DeleteTestDynamoDBTable(context.Background(), s.dynamodbClient)
 	s.Require().NoError(CreateTestDynamoDBTable(context.Background(), s.dynamodbClient))
 	s.dynamoDBTableProps, err = l.LoadDynamoDBTableProperties(context.Background(), s.dynamodbClient, testDynamoDBTableName)
 	s.Require().NoError(err)
@@ -126,17 +127,19 @@ func (s *LimitersTestSuite) TearDownSuite() {
 	s.Assert().NoError(s.memcacheClient.Close())
 }
 
-func TestBucketTestSuite(t *testing.T) {
+func TestLimitersTestSuite(t *testing.T) {
 	suite.Run(t, new(LimitersTestSuite))
 }
 
 // lockers returns all possible lockers (including noop).
-func (s *LimitersTestSuite) lockers(generateKeys bool) []l.DistLocker {
-	return append(s.distLockers(generateKeys), l.NewLockNoop())
+func (s *LimitersTestSuite) lockers(generateKeys bool) map[string]l.DistLocker {
+	lockers := s.distLockers(generateKeys)
+	lockers["LockNoop"] = l.NewLockNoop()
+	return lockers
 }
 
 // distLockers returns distributed lockers only.
-func (s *LimitersTestSuite) distLockers(generateKeys bool) []l.DistLocker {
+func (s *LimitersTestSuite) distLockers(generateKeys bool) map[string]l.DistLocker {
 	randomKey := uuid.New().String()
 	consulKey := randomKey
 	etcdKey := randomKey
@@ -152,12 +155,12 @@ func (s *LimitersTestSuite) distLockers(generateKeys bool) []l.DistLocker {
 	}
 	consulLock, err := s.consulClient.LockKey(consulKey)
 	s.Require().NoError(err)
-	return []l.DistLocker{
-		l.NewLockEtcd(s.etcdClient, etcdKey, s.logger),
-		l.NewLockConsul(consulLock),
-		l.NewLockZookeeper(zk.NewLock(s.zkConn, zkKey, zk.WorldACL(zk.PermAll))),
-		l.NewLockRedis(goredis.NewPool(s.redisClient), redisKey),
-		l.NewLockMemcached(s.memcacheClient, memcacheKey),
+	return map[string]l.DistLocker{
+		"LockEtcd":      l.NewLockEtcd(s.etcdClient, etcdKey, s.logger),
+		"LockConsul":    l.NewLockConsul(consulLock),
+		"LockZookeeper": l.NewLockZookeeper(zk.NewLock(s.zkConn, zkKey, zk.WorldACL(zk.PermAll))),
+		"LockRedis":     l.NewLockRedis(goredis.NewPool(s.redisClient), redisKey),
+		"LockMemcached": l.NewLockMemcached(s.memcacheClient, memcacheKey),
 	}
 }
 
@@ -165,21 +168,21 @@ func (s *LimitersTestSuite) TestLimitContextCancelled() {
 	clock := newFakeClock()
 	capacity := int64(2)
 	rate := time.Second
-	var limiters []interface{}
-	for _, b := range s.tokenBuckets(capacity, rate, clock) {
-		limiters = append(limiters, b)
+	limiters := make(map[string]interface{})
+	for n, b := range s.tokenBuckets(capacity, rate, clock) {
+		limiters[n] = b
 	}
-	for _, b := range s.leakyBuckets(capacity, rate, clock) {
-		limiters = append(limiters, b)
+	for n, b := range s.leakyBuckets(capacity, rate, clock) {
+		limiters[n] = b
 	}
-	for _, w := range s.fixedWindows(capacity, rate, clock) {
-		limiters = append(limiters, w)
+	for n, w := range s.fixedWindows(capacity, rate, clock) {
+		limiters[n] = w
 	}
-	for _, w := range s.slidingWindows(capacity, rate, clock, 1e-9) {
-		limiters = append(limiters, w)
+	for n, w := range s.slidingWindows(capacity, rate, clock, 1e-9) {
+		limiters[n] = w
 	}
-	for _, b := range s.concurrentBuffers(capacity, rate, clock) {
-		limiters = append(limiters, b)
+	for n, b := range s.concurrentBuffers(capacity, rate, clock) {
+		limiters[n] = b
 	}
 	type rateLimiter interface {
 		Limit(context.Context) (time.Duration, error)
@@ -188,38 +191,40 @@ func (s *LimitersTestSuite) TestLimitContextCancelled() {
 		Limit(context.Context, string) error
 	}
 
-	for _, limiter := range limiters {
-		done1 := make(chan struct{})
-		go func(limiter interface{}) {
-			defer close(done1)
-			// The context is expired shortly after it is created.
-			ctx, cancel := context.WithCancel(context.Background())
-			cancel()
-			switch lim := limiter.(type) {
-			case rateLimiter:
-				_, err := lim.Limit(ctx)
-				s.Error(err, "%T", limiter)
+	for name, limiter := range limiters {
+		s.Run(name, func() {
+			done1 := make(chan struct{})
+			go func(limiter interface{}) {
+				defer close(done1)
+				// The context is expired shortly after it is created.
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+				switch lim := limiter.(type) {
+				case rateLimiter:
+					_, err := lim.Limit(ctx)
+					s.Error(err, "%T", limiter)
 
-			case concurrentLimiter:
-				s.Error(lim.Limit(ctx, "key"), "%T", limiter)
-			}
+				case concurrentLimiter:
+					s.Error(lim.Limit(ctx, "key"), "%T", limiter)
+				}
 
-		}(limiter)
-		done2 := make(chan struct{})
-		go func(limiter interface{}) {
-			defer close(done2)
-			<-done1
-			ctx := context.Background()
-			switch lim := limiter.(type) {
-			case rateLimiter:
-				_, err := lim.Limit(ctx)
-				s.NoError(err, "%T", limiter)
+			}(limiter)
+			done2 := make(chan struct{})
+			go func(limiter interface{}) {
+				defer close(done2)
+				<-done1
+				ctx := context.Background()
+				switch lim := limiter.(type) {
+				case rateLimiter:
+					_, err := lim.Limit(ctx)
+					s.NoError(err, "%T", limiter)
 
-			case concurrentLimiter:
-				s.NoError(lim.Limit(ctx, "key"), "%T", limiter)
-			}
-		}(limiter)
-		// Verify that the second go routine succeeded calling the Limit() method.
-		<-done2
+				case concurrentLimiter:
+					s.NoError(lim.Limit(ctx, "key"), "%T", limiter)
+				}
+			}(limiter)
+			// Verify that the second go routine succeeded calling the Limit() method.
+			<-done2
+		})
 	}
 }

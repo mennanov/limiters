@@ -10,20 +10,20 @@ import (
 )
 
 // slidingWindows returns all the possible SlidingWindow combinations.
-func (s *LimitersTestSuite) slidingWindows(capacity int64, rate time.Duration, clock l.Clock, epsilon float64) []*l.SlidingWindow {
-	var windows []*l.SlidingWindow
-	for _, inc := range s.slidingWindowIncrementers() {
-		windows = append(windows, l.NewSlidingWindow(capacity, rate, inc, clock, epsilon))
+func (s *LimitersTestSuite) slidingWindows(capacity int64, rate time.Duration, clock l.Clock, epsilon float64) map[string]*l.SlidingWindow {
+	windows := make(map[string]*l.SlidingWindow)
+	for name, inc := range s.slidingWindowIncrementers() {
+		windows[name] = l.NewSlidingWindow(capacity, rate, inc, clock, epsilon)
 	}
 	return windows
 }
 
-func (s *LimitersTestSuite) slidingWindowIncrementers() []l.SlidingWindowIncrementer {
-	return []l.SlidingWindowIncrementer{
-		l.NewSlidingWindowInMemory(),
-		l.NewSlidingWindowRedis(s.redisClient, uuid.New().String()),
-		l.NewSlidingWindowMemcached(s.memcacheClient, uuid.New().String()),
-		l.NewSlidingWindowDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps),
+func (s *LimitersTestSuite) slidingWindowIncrementers() map[string]l.SlidingWindowIncrementer {
+	return map[string]l.SlidingWindowIncrementer{
+		"SlidingWindowInMemory":  l.NewSlidingWindowInMemory(),
+		"SlidingWindowRedis":     l.NewSlidingWindowRedis(s.redisClient, uuid.New().String()),
+		"SlidingWindowMemcached": l.NewSlidingWindowMemcached(s.memcacheClient, uuid.New().String()),
+		"SlidingWindowDynamoDB":  l.NewSlidingWindowDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps),
 	}
 }
 
@@ -291,15 +291,17 @@ var slidingWindowTestCases = []struct {
 func (s *LimitersTestSuite) TestSlidingWindowOverflowAndWait() {
 	clock := newFakeClockWithTime(time.Date(2019, 9, 3, 0, 0, 0, 0, time.UTC))
 	for _, testCase := range slidingWindowTestCases {
-		for _, bucket := range s.slidingWindows(testCase.capacity, testCase.rate, clock, testCase.epsilon) {
-			clock.reset()
-			for i := 0; i < testCase.requests; i++ {
-				w, err := bucket.Limit(context.TODO())
-				s.Require().LessOrEqual(i, len(testCase.results)-1)
-				s.InDelta(testCase.results[i].w, w, testCase.delta, i)
-				s.Equal(testCase.results[i].e, err, i)
-				clock.Sleep(w)
-			}
+		for name, bucket := range s.slidingWindows(testCase.capacity, testCase.rate, clock, testCase.epsilon) {
+			s.Run(name, func() {
+				clock.reset()
+				for i := 0; i < testCase.requests; i++ {
+					w, err := bucket.Limit(context.TODO())
+					s.Require().LessOrEqual(i, len(testCase.results)-1)
+					s.InDelta(testCase.results[i].w, w, testCase.delta, i)
+					s.Equal(testCase.results[i].e, err, i)
+					clock.Sleep(w)
+				}
+			})
 		}
 	}
 }

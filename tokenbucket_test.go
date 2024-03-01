@@ -68,56 +68,58 @@ var tokenBucketUniformTestCases = []struct {
 }
 
 // tokenBuckets returns all the possible TokenBucket combinations.
-func (s *LimitersTestSuite) tokenBuckets(capacity int64, refillRate time.Duration, clock l.Clock) []*l.TokenBucket {
-	var buckets []*l.TokenBucket
-	for _, locker := range s.lockers(true) {
-		for _, backend := range s.tokenBucketBackends() {
-			buckets = append(buckets, l.NewTokenBucket(capacity, refillRate, locker, backend, clock, s.logger))
+func (s *LimitersTestSuite) tokenBuckets(capacity int64, refillRate time.Duration, clock l.Clock) map[string]*l.TokenBucket {
+	buckets := make(map[string]*l.TokenBucket)
+	for lockerName, locker := range s.lockers(true) {
+		for backendName, backend := range s.tokenBucketBackends() {
+			buckets[lockerName+":"+backendName] = l.NewTokenBucket(capacity, refillRate, locker, backend, clock, s.logger)
 		}
 	}
 	return buckets
 }
 
-func (s *LimitersTestSuite) tokenBucketBackends() []l.TokenBucketStateBackend {
-	return []l.TokenBucketStateBackend{
-		l.NewTokenBucketInMemory(),
-		l.NewTokenBucketEtcd(s.etcdClient, uuid.New().String(), time.Second, false),
-		l.NewTokenBucketEtcd(s.etcdClient, uuid.New().String(), time.Second, true),
-		l.NewTokenBucketRedis(s.redisClient, uuid.New().String(), time.Second, false),
-		l.NewTokenBucketRedis(s.redisClient, uuid.New().String(), time.Second, true),
-		l.NewTokenBucketMemcached(s.memcacheClient, uuid.New().String(), time.Second, false),
-		l.NewTokenBucketMemcached(s.memcacheClient, uuid.New().String(), time.Second, true),
-		l.NewTokenBucketDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps, time.Second, false),
-		l.NewTokenBucketDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps, time.Second, true),
+func (s *LimitersTestSuite) tokenBucketBackends() map[string]l.TokenBucketStateBackend {
+	return map[string]l.TokenBucketStateBackend{
+		"TokenBucketInMemory":               l.NewTokenBucketInMemory(),
+		"TokenBucketEtcdNoRaceCheck":        l.NewTokenBucketEtcd(s.etcdClient, uuid.New().String(), time.Second, false),
+		"TokenBucketEtcdWithRaceCheck":      l.NewTokenBucketEtcd(s.etcdClient, uuid.New().String(), time.Second, true),
+		"TokenBucketRedisNoRaceCheck":       l.NewTokenBucketRedis(s.redisClient, uuid.New().String(), time.Second, false),
+		"TokenBucketRedisWithRaceCheck":     l.NewTokenBucketRedis(s.redisClient, uuid.New().String(), time.Second, true),
+		"TokenBucketMemcachedNoRaceCheck":   l.NewTokenBucketMemcached(s.memcacheClient, uuid.New().String(), time.Second, false),
+		"TokenBucketMemcachedWithRaceCheck": l.NewTokenBucketMemcached(s.memcacheClient, uuid.New().String(), time.Second, true),
+		"TokenBucketDynamoDBNoRaceCheck":    l.NewTokenBucketDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps, time.Second, false),
+		"TokenBucketDynamoDBWithRaceCheck":  l.NewTokenBucketDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps, time.Second, true),
 	}
 }
 
 func (s *LimitersTestSuite) TestTokenBucketRealClock() {
 	clock := l.NewSystemClock()
 	for _, testCase := range tokenBucketUniformTestCases {
-		for _, bucket := range s.tokenBuckets(testCase.capacity, testCase.refillRate, clock) {
-			wg := sync.WaitGroup{}
-			// mu guards the miss variable below.
-			var mu sync.Mutex
-			miss := 0
-			for i := int64(0); i < testCase.requestCount; i++ {
-				// No pause for the first request.
-				if i > 0 {
-					clock.Sleep(testCase.requestRate)
-				}
-				wg.Add(1)
-				go func(bucket *l.TokenBucket) {
-					defer wg.Done()
-					if _, err := bucket.Limit(context.TODO()); err != nil {
-						s.Equal(l.ErrLimitExhausted, err, "%T %v", bucket, bucket)
-						mu.Lock()
-						miss++
-						mu.Unlock()
+		for name, bucket := range s.tokenBuckets(testCase.capacity, testCase.refillRate, clock) {
+			s.Run(name, func() {
+				wg := sync.WaitGroup{}
+				// mu guards the miss variable below.
+				var mu sync.Mutex
+				miss := 0
+				for i := int64(0); i < testCase.requestCount; i++ {
+					// No pause for the first request.
+					if i > 0 {
+						clock.Sleep(testCase.requestRate)
 					}
-				}(bucket)
-			}
-			wg.Wait()
-			s.InDelta(testCase.missExpected, miss, testCase.delta, testCase)
+					wg.Add(1)
+					go func(bucket *l.TokenBucket) {
+						defer wg.Done()
+						if _, err := bucket.Limit(context.TODO()); err != nil {
+							s.Equal(l.ErrLimitExhausted, err, "%T %v", bucket, bucket)
+							mu.Lock()
+							miss++
+							mu.Unlock()
+						}
+					}(bucket)
+				}
+				wg.Wait()
+				s.InDelta(testCase.missExpected, miss, testCase.delta, testCase)
+			})
 		}
 	}
 }
@@ -125,20 +127,22 @@ func (s *LimitersTestSuite) TestTokenBucketRealClock() {
 func (s *LimitersTestSuite) TestTokenBucketFakeClock() {
 	for _, testCase := range tokenBucketUniformTestCases {
 		clock := newFakeClock()
-		for _, bucket := range s.tokenBuckets(testCase.capacity, testCase.refillRate, clock) {
-			clock.reset()
-			miss := 0
-			for i := int64(0); i < testCase.requestCount; i++ {
-				// No pause for the first request.
-				if i > 0 {
-					clock.Sleep(testCase.requestRate)
+		for name, bucket := range s.tokenBuckets(testCase.capacity, testCase.refillRate, clock) {
+			s.Run(name, func() {
+				clock.reset()
+				miss := 0
+				for i := int64(0); i < testCase.requestCount; i++ {
+					// No pause for the first request.
+					if i > 0 {
+						clock.Sleep(testCase.requestRate)
+					}
+					if _, err := bucket.Limit(context.TODO()); err != nil {
+						s.Equal(l.ErrLimitExhausted, err)
+						miss++
+					}
 				}
-				if _, err := bucket.Limit(context.TODO()); err != nil {
-					s.Equal(l.ErrLimitExhausted, err)
-					miss++
-				}
-			}
-			s.InDelta(testCase.missExpected, miss, testCase.delta, testCase)
+				s.InDelta(testCase.missExpected, miss, testCase.delta, testCase)
+			})
 		}
 	}
 }
@@ -146,49 +150,54 @@ func (s *LimitersTestSuite) TestTokenBucketFakeClock() {
 func (s *LimitersTestSuite) TestTokenBucketOverflow() {
 	clock := newFakeClock()
 	rate := time.Second
-	for _, bucket := range s.tokenBuckets(2, rate, clock) {
-		clock.reset()
-		wait, err := bucket.Limit(context.TODO())
-		s.Require().NoError(err)
-		s.Equal(time.Duration(0), wait)
-		wait, err = bucket.Limit(context.TODO())
-		s.Require().NoError(err)
-		s.Equal(time.Duration(0), wait)
-		// The third call should fail.
-		wait, err = bucket.Limit(context.TODO())
-		s.Require().Equal(l.ErrLimitExhausted, err)
-		s.Equal(rate, wait)
-		clock.Sleep(wait)
-		// Retry the last call.
-		wait, err = bucket.Limit(context.TODO())
-		s.Require().NoError(err)
-		s.Equal(time.Duration(0), wait)
+	for name, bucket := range s.tokenBuckets(2, rate, clock) {
+		s.Run(name, func() {
+			clock.reset()
+			wait, err := bucket.Limit(context.TODO())
+			s.Require().NoError(err)
+			s.Equal(time.Duration(0), wait)
+			wait, err = bucket.Limit(context.TODO())
+			s.Require().NoError(err)
+			s.Equal(time.Duration(0), wait)
+			// The third call should fail.
+			wait, err = bucket.Limit(context.TODO())
+			s.Require().Equal(l.ErrLimitExhausted, err)
+			s.Equal(rate, wait)
+			clock.Sleep(wait)
+			// Retry the last call.
+			wait, err = bucket.Limit(context.TODO())
+			s.Require().NoError(err)
+			s.Equal(time.Duration(0), wait)
+		})
 	}
 }
 
 func (s *LimitersTestSuite) TestTokenBucketRefill() {
-	backend := l.NewTokenBucketInMemory()
-	clock := newFakeClock()
+	for name, backend := range s.tokenBucketBackends() {
+		s.Run(name, func() {
+			clock := newFakeClock()
 
-	bucket := l.NewTokenBucket(4, time.Millisecond*100, l.NewLockNoop(), backend, clock, s.logger)
-	sleepDurations := []int{150, 90, 50, 70}
-	desiredAvailable := []int64{3, 2, 2, 2}
+			bucket := l.NewTokenBucket(4, time.Millisecond*100, l.NewLockNoop(), backend, clock, s.logger)
+			sleepDurations := []int{150, 90, 50, 70}
+			desiredAvailable := []int64{3, 2, 2, 2}
 
-	_, err := bucket.Limit(context.Background())
-	s.Require().NoError(err)
+			_, err := bucket.Limit(context.Background())
+			s.Require().NoError(err)
 
-	_, err = backend.State(context.Background())
-	s.Require().NoError(err, "unable to retrieve backend state")
+			_, err = backend.State(context.Background())
+			s.Require().NoError(err, "unable to retrieve backend state")
 
-	for i := range sleepDurations {
-		clock.Sleep(time.Millisecond * time.Duration(sleepDurations[i]))
+			for i := range sleepDurations {
+				clock.Sleep(time.Millisecond * time.Duration(sleepDurations[i]))
 
-		_, err := bucket.Limit(context.Background())
-		s.Require().NoError(err)
+				_, err := bucket.Limit(context.Background())
+				s.Require().NoError(err)
 
-		state, err := backend.State(context.Background())
-		s.Require().NoError(err, "unable to retrieve backend state")
+				state, err := backend.State(context.Background())
+				s.Require().NoError(err, "unable to retrieve backend state")
 
-		s.Require().Equal(desiredAvailable[i], state.Available)
+				s.Require().Equal(desiredAvailable[i], state.Available)
+			}
+		})
 	}
 }
