@@ -89,3 +89,15 @@ func (s *LimitersTestSuite) TestConcurrentBufferExpiredKeys() {
 		s.NoError(buffer.Limit(context.TODO(), "key3"))
 	}
 }
+
+func (s *LimitersTestSuite) TestConcurrentBufferDuplicateKeys() {
+	clock := newFakeClock()
+	capacity := int64(2)
+	ttl := time.Second
+	for _, buffer := range s.concurrentBuffers(capacity, ttl, clock) {
+		s.Require().NoError(buffer.Limit(context.TODO(), "key1"))
+		s.Require().NoError(buffer.Limit(context.TODO(), "key2"))
+		// No error is expected as it should just update the timestamp of the existing key.
+		s.NoError(buffer.Limit(context.TODO(), "key1"))
+	}
+}

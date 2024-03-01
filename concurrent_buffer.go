@@ -199,7 +199,7 @@ func (c *ConcurrentBufferMemcached) Add(ctx context.Context, element string) (in
 			var oldNodes []SortedSetNode
 			_ = gob.NewDecoder(b).Decode(&oldNodes)
 			for _, node := range oldNodes {
-				if node.CreatedAt > now.UnixNano() {
+				if node.CreatedAt > now.UnixNano() && node.Value != element {
 					newNodes = append(newNodes, node)
 				}
 			}
@@ -239,8 +239,7 @@ func (c *ConcurrentBufferMemcached) Remove(ctx context.Context, key string) erro
 	var err error
 	now := c.clock.Now()
 	var newNodes []SortedSetNode
-	var casId uint64 = 0
-	deleted := false
+	var casID uint64
 	item, err := c.cli.Get(c.key)
 	if err != nil {
 		if errors.Is(err, memcache.ErrCacheMiss) {
@@ -248,16 +247,12 @@ func (c *ConcurrentBufferMemcached) Remove(ctx context.Context, key string) erro
 		}
 		return errors.Wrap(err, "failed to Get")
 	}
-	casId = item.CasID
+	casID = item.CasID
 	var oldNodes []SortedSetNode
 	_ = gob.NewDecoder(bytes.NewBuffer(item.Value)).Decode(&oldNodes)
 	for _, node := range oldNodes {
-		if node.CreatedAt > now.UnixNano() {
-			if node.Value == key && !deleted {
-				deleted = true
-			} else {
-				newNodes = append(newNodes, node)
-			}
+		if node.CreatedAt > now.UnixNano() && node.Value != key {
+			newNodes = append(newNodes, node)
 		}
 	}
 
@@ -266,7 +261,7 @@ func (c *ConcurrentBufferMemcached) Remove(ctx context.Context, key string) erro
 	item = &memcache.Item{
 		Key:   c.key,
 		Value: b.Bytes(),
-		CasID: casId,
+		CasID: casID,
 	}
 	err = c.cli.CompareAndSwap(item)
 	if err != nil && (errors.Is(err, memcache.ErrCASConflict) || errors.Is(err, memcache.ErrNotStored) || errors.Is(err, memcache.ErrCacheMiss)) {
