@@ -144,8 +144,3 @@ Run tests locally:
 ```bash
 make
 ```
-
-Run [Drone](https://drone.io) CI tests locally:
-```bash
-for p in "go1.13" "go1.12" "go1.11" "lint"; do drone exec --pipeline=${p}; done
-```
