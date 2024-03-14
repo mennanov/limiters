@@ -7,10 +7,10 @@ jobs:
     name: Go vet
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - name: Setup Go 1.20
-        uses: actions/setup-go@v3
+      - uses: actions/checkout@v4
+      - name: Setup Go 1.22
+        uses: actions/setup-go@v5
         with:
-          go-version: '1.20'
+          go-version: '1.22'
       - name: Go vet
         run: go vet ./...
