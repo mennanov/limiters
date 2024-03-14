@@ -57,7 +57,7 @@ jobs:
           AWS_ADDR: 'localhost:8000'
           MEMCACHED_ADDR: '127.0.0.1:11211'
         run: go test -race -v -coverprofile=coverage.txt -covermode=atomic ./...
-      - uses: codecov/codecov-action@v3
+      - uses: codecov/codecov-action@v4.1.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           verbose: true
