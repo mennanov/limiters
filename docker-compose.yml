@@ -37,3 +37,10 @@ services:
     command: "-jar DynamoDBLocal.jar -inMemory"
     ports:
       - "8000:8000"
+
+  postgresql:
+    image: bitnami/postgresql
+    environment:
+      ALLOW_EMPTY_PASSWORD: yes
+    ports:
+      - "5432:5432"

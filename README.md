@@ -128,6 +128,7 @@ Supported backends:
 - [Zookeeper](https://zookeeper.apache.org/)
 - [Redis](https://redis.io/)
 - [Memcached](https://memcached.org/)
+- [PostgreSQL](https://www.postgresql.org/)
 
 ## Memcached
 
