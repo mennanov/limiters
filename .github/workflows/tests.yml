@@ -37,6 +37,12 @@ jobs:
           ALLOW_ANONYMOUS_LOGIN: yes
         ports:
           - 2181:2181
+      postgresql:
+        image: bitnami/postgresql
+        env:
+          ALLOW_EMPTY_PASSWORD: yes
+        ports:
+          - 5432:5432
 
     steps:
       - uses: actions/checkout@v4

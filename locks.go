@@ -2,6 +2,7 @@ package limiters
 
 import (
 	"context"
+	"database/sql"
 	"github.com/alessandro-c/gomemcached-lock"
 	"github.com/alessandro-c/gomemcached-lock/adapters/gomemcache"
 	"github.com/bradfitz/gomemcache/memcache"
@@ -9,6 +10,7 @@ import (
 	"github.com/go-redsync/redsync/v4"
 	redsyncredis "github.com/go-redsync/redsync/v4/redis"
 	"github.com/hashicorp/consul/api"
+	_ "github.com/lib/pq"
 	"github.com/pkg/errors"
 	"github.com/samuel/go-zookeeper/zk"
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -186,4 +188,30 @@ func (l *LockMemcached) Lock(ctx context.Context) error {
 // Unlock unlocks the lock in Memcached.
 func (l *LockMemcached) Unlock(ctx context.Context) error {
 	return l.locker.Release()
+}
+
+// LockPostgreSQL is an implementation of the DistLocker interface using PostgreSQL's advisory lock.
+type LockPostgreSQL struct {
+	db *sql.DB
+	id uint32
+}
+
+// NewLockPostgreSQL creates a new LockPostgreSQL.
+func NewLockPostgreSQL(db *sql.DB, id uint32) *LockPostgreSQL {
+	return &LockPostgreSQL{db, id}
+}
+
+// Make sure LockPostgreSQL implements DistLocker interface
+var _ DistLocker = (*LockPostgreSQL)(nil)
+
+// Lock acquire an advisory lock in PostgreSQL
+func (l *LockPostgreSQL) Lock(ctx context.Context) error {
+	_, err := l.db.ExecContext(ctx, "SELECT pg_advisory_lock($1)", l.id)
+	return err
+}
+
+// Unlock releases an advisory lock in PostgreSQL
+func (l *LockPostgreSQL) Unlock(ctx context.Context) error {
+	_, err := l.db.ExecContext(ctx, "SELECT pg_advisory_unlock($1)", l.id)
+	return err
 }
