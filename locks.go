@@ -9,6 +9,7 @@ import (
 	"github.com/cenkalti/backoff/v3"
 	"github.com/go-redsync/redsync/v4"
 	redsyncredis "github.com/go-redsync/redsync/v4/redis"
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/hashicorp/consul/api"
 	_ "github.com/lib/pq"
 	"github.com/pkg/errors"
@@ -204,7 +205,7 @@ func NewLockPostgreSQL(db *sql.DB, id uint32) *LockPostgreSQL {
 // Make sure LockPostgreSQL implements DistLocker interface
 var _ DistLocker = (*LockPostgreSQL)(nil)
 
-// Lock acquire an advisory lock in PostgreSQL
+// Lock acquires an advisory lock in PostgreSQL
 func (l *LockPostgreSQL) Lock(ctx context.Context) error {
 	_, err := l.db.ExecContext(ctx, "SELECT pg_advisory_lock($1)", l.id)
 	return err
@@ -215,3 +216,29 @@ func (l *LockPostgreSQL) Unlock(ctx context.Context) error {
 	_, err := l.db.ExecContext(ctx, "SELECT pg_advisory_unlock($1)", l.id)
 	return err
 }
+
+// LockMySQL is an implementation of the DistLocker interface using MySQL's user-level lock.
+type LockMySQL struct {
+	db   *sql.DB
+	name string
+}
+
+// Lock acquires an user-level lock in MySQL
+func (l LockMySQL) Lock(ctx context.Context) error {
+	_, err := l.db.ExecContext(ctx, "SELECT GET_LOCK(?, ?);", l.name, -1)
+	return err
+}
+
+// Unlock releases an user-level lock in MySQL
+func (l LockMySQL) Unlock(ctx context.Context) error {
+	_, err := l.db.ExecContext(ctx, "SELECT RELEASE_LOCK(?);", l.name)
+	return err
+}
+
+// NewLockMySQL creates a new LockMySQL.
+func NewLockMySQL(db *sql.DB, name string) *LockMySQL {
+	return &LockMySQL{db, name}
+}
+
+// Make sure LockMySQL implements DistLocker interface
+var _ DistLocker = (*LockMySQL)(nil)

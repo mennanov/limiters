@@ -23,6 +23,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.17.6
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.19.1
 	github.com/cenkalti/backoff/v3 v3.2.2
+	github.com/go-sql-driver/mysql v1.7.1
 	github.com/lib/pq v1.10.9
 )
 

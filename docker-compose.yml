@@ -44,3 +44,10 @@ services:
       ALLOW_EMPTY_PASSWORD: yes
     ports:
       - "5432:5432"
+
+  mysql:
+    image: bitnami/mysql
+    environment:
+      ALLOW_EMPTY_PASSWORD: yes
+    ports:
+      - "3306:3306"

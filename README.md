@@ -129,6 +129,7 @@ Supported backends:
 - [Redis](https://redis.io/)
 - [Memcached](https://memcached.org/)
 - [PostgreSQL](https://www.postgresql.org/)
+- [MySQL](https://www.mysql.com/)
 
 ## Memcached
 

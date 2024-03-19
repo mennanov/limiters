@@ -43,6 +43,12 @@ jobs:
           ALLOW_EMPTY_PASSWORD: yes
         ports:
           - 5432:5432
+      mysql:
+        image: bitnami/mysql
+        env:
+          ALLOW_EMPTY_PASSWORD: yes
+        ports:
+          - "3306:3306"
 
     steps:
       - uses: actions/checkout@v4
@@ -61,8 +67,9 @@ jobs:
           CONSUL_ADDR: 'localhost:8500'
           ZOOKEEPER_ENDPOINTS: 'localhost:2181'
           AWS_ADDR: 'localhost:8000'
-          MEMCACHED_ADDR: '127.0.0.1:11211'
+          MEMCACHED_ADDR: 'localhost:11211'
           POSTGRES_URL: postgres://postgres@localhost:5432/?sslmode=disable
+          MYSQL_URL: root@tcp(localhost:3306)/
         run: go test -race -v -coverprofile=coverage.txt -covermode=atomic ./...
       - uses: codecov/codecov-action@v4.1.0
         with:
