@@ -194,12 +194,11 @@ func (l *LockMemcached) Unlock(ctx context.Context) error {
 type LockPostgreSQL struct {
 	db *sql.DB
 	id uint32
-	tx *sql.Tx
 }
 
 // NewLockPostgreSQL creates a new LockPostgreSQL.
 func NewLockPostgreSQL(db *sql.DB, id uint32) *LockPostgreSQL {
-	return &LockPostgreSQL{db, id, nil}
+	return &LockPostgreSQL{db, id}
 }
 
 // Make sure LockPostgreSQL implements DistLocker interface
@@ -207,16 +206,12 @@ var _ DistLocker = (*LockPostgreSQL)(nil)
 
 // Lock acquire an advisory lock in PostgreSQL
 func (l *LockPostgreSQL) Lock(ctx context.Context) error {
-	var err error
-	l.tx, err = l.db.BeginTx(ctx, &sql.TxOptions{})
-	if err != nil {
-		return err
-	}
-	_, err = l.tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock($1)", l.id)
+	_, err := l.db.ExecContext(ctx, "SELECT pg_advisory_lock($1)", l.id)
 	return err
 }
 
 // Unlock releases an advisory lock in PostgreSQL
 func (l *LockPostgreSQL) Unlock(ctx context.Context) error {
-	return l.tx.Rollback()
+	_, err := l.db.ExecContext(ctx, "SELECT pg_advisory_unlock($1)", l.id)
+	return err
 }

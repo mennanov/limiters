@@ -73,7 +73,7 @@ type LimitersTestSuite struct {
 	dynamodbClient     *dynamodb.Client
 	dynamoDBTableProps l.DynamoDBTableProperties
 	memcacheClient     *memcache.Client
-	pgDb               *sql.DB
+	pgDb               []*sql.DB
 }
 
 func (s *LimitersTestSuite) SetupSuite() {
@@ -122,9 +122,16 @@ func (s *LimitersTestSuite) SetupSuite() {
 	s.memcacheClient = memcache.New(strings.Split(os.Getenv("MEMCACHED_ADDR"), ",")...)
 	s.Require().NoError(s.memcacheClient.Ping())
 
-	s.pgDb, err = sql.Open("postgres", os.Getenv("POSTGRES_URL"))
+	s.pgDb = []*sql.DB{}
+}
+
+func (s *LimitersTestSuite) openPgDb() *sql.DB {
+	var pgDb *sql.DB
+	pgDb, err := sql.Open("postgres", os.Getenv("POSTGRES_URL"))
 	s.Require().NoError(err)
-	s.Require().NoError(s.pgDb.Ping())
+	s.Require().NoError(pgDb.Ping())
+	s.pgDb = append(s.pgDb, pgDb)
+	return pgDb
 }
 
 func (s *LimitersTestSuite) TearDownSuite() {
@@ -132,7 +139,9 @@ func (s *LimitersTestSuite) TearDownSuite() {
 	s.Assert().NoError(s.redisClient.Close())
 	s.Assert().NoError(DeleteTestDynamoDBTable(context.Background(), s.dynamodbClient))
 	s.Assert().NoError(s.memcacheClient.Close())
-	s.Assert().NoError(s.pgDb.Close())
+	for _, pgDb := range s.pgDb {
+		s.Assert().NoError(pgDb.Close())
+	}
 }
 
 func TestLimitersTestSuite(t *testing.T) {
@@ -180,7 +189,7 @@ func (s *LimitersTestSuite) distLockers(generateKeys bool) map[string]l.DistLock
 		"LockZookeeper":  l.NewLockZookeeper(zk.NewLock(s.zkConn, zkKey, zk.WorldACL(zk.PermAll))),
 		"LockRedis":      l.NewLockRedis(goredis.NewPool(s.redisClient), redisKey),
 		"LockMemcached":  l.NewLockMemcached(s.memcacheClient, memcacheKey),
-		"LockPostgreSQL": l.NewLockPostgreSQL(s.pgDb, hash(pgKey)),
+		"LockPostgreSQL": l.NewLockPostgreSQL(s.openPgDb(), hash(pgKey)),
 	}
 }
 
