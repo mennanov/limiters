@@ -3,6 +3,7 @@ package limiters_test
 import (
 	"context"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/mennanov/limiters"
@@ -43,4 +44,20 @@ func (s *LimitersTestSuite) TestDistLockers() {
 			s.Equal(rounds*2, shared)
 		})
 	}
+}
+
+func BenchmarkDistLockers(b *testing.B) {
+	s := new(LimitersTestSuite)
+	s.SetT(&testing.T{})
+	s.SetupSuite()
+	lockers := s.distLockers(false)
+	for name, locker := range lockers {
+		b.Run(name, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				s.Require().NoError(locker.Lock(context.Background()))
+				s.Require().NoError(locker.Unlock(context.Background()))
+			}
+		})
+	}
+	s.TearDownSuite()
 }

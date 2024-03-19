@@ -2,7 +2,9 @@ package limiters_test
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"hash/fnv"
 	"os"
 	"strings"
 	"sync"
@@ -71,6 +73,7 @@ type LimitersTestSuite struct {
 	dynamodbClient     *dynamodb.Client
 	dynamoDBTableProps l.DynamoDBTableProperties
 	memcacheClient     *memcache.Client
+	pgDb               *sql.DB
 }
 
 func (s *LimitersTestSuite) SetupSuite() {
@@ -118,6 +121,10 @@ func (s *LimitersTestSuite) SetupSuite() {
 
 	s.memcacheClient = memcache.New(strings.Split(os.Getenv("MEMCACHED_ADDR"), ",")...)
 	s.Require().NoError(s.memcacheClient.Ping())
+
+	s.pgDb, err = sql.Open("postgres", os.Getenv("POSTGRES_URL"))
+	s.Require().NoError(err)
+	s.Require().NoError(s.pgDb.Ping())
 }
 
 func (s *LimitersTestSuite) TearDownSuite() {
@@ -125,6 +132,7 @@ func (s *LimitersTestSuite) TearDownSuite() {
 	s.Assert().NoError(s.redisClient.Close())
 	s.Assert().NoError(DeleteTestDynamoDBTable(context.Background(), s.dynamodbClient))
 	s.Assert().NoError(s.memcacheClient.Close())
+	s.Assert().NoError(s.pgDb.Close())
 }
 
 func TestLimitersTestSuite(t *testing.T) {
@@ -138,6 +146,15 @@ func (s *LimitersTestSuite) lockers(generateKeys bool) map[string]l.DistLocker {
 	return lockers
 }
 
+func hash(s string) uint32 {
+	h := fnv.New32a()
+	_, err := h.Write([]byte(s))
+	if err != nil {
+		panic(err)
+	}
+	return h.Sum32()
+}
+
 // distLockers returns distributed lockers only.
 func (s *LimitersTestSuite) distLockers(generateKeys bool) map[string]l.DistLocker {
 	randomKey := uuid.New().String()
@@ -146,21 +163,24 @@ func (s *LimitersTestSuite) distLockers(generateKeys bool) map[string]l.DistLock
 	zkKey := "/" + randomKey
 	redisKey := randomKey
 	memcacheKey := randomKey
+	pgKey := randomKey
 	if !generateKeys {
 		consulKey = "dist_locker"
 		etcdKey = "dist_locker"
 		zkKey = "/dist_locker"
 		redisKey = "dist_locker"
 		memcacheKey = "dist_locker"
+		pgKey = "dist_locker"
 	}
 	consulLock, err := s.consulClient.LockKey(consulKey)
 	s.Require().NoError(err)
 	return map[string]l.DistLocker{
-		"LockEtcd":      l.NewLockEtcd(s.etcdClient, etcdKey, s.logger),
-		"LockConsul":    l.NewLockConsul(consulLock),
-		"LockZookeeper": l.NewLockZookeeper(zk.NewLock(s.zkConn, zkKey, zk.WorldACL(zk.PermAll))),
-		"LockRedis":     l.NewLockRedis(goredis.NewPool(s.redisClient), redisKey),
-		"LockMemcached": l.NewLockMemcached(s.memcacheClient, memcacheKey),
+		"LockEtcd":       l.NewLockEtcd(s.etcdClient, etcdKey, s.logger),
+		"LockConsul":     l.NewLockConsul(consulLock),
+		"LockZookeeper":  l.NewLockZookeeper(zk.NewLock(s.zkConn, zkKey, zk.WorldACL(zk.PermAll))),
+		"LockRedis":      l.NewLockRedis(goredis.NewPool(s.redisClient), redisKey),
+		"LockMemcached":  l.NewLockMemcached(s.memcacheClient, memcacheKey),
+		"LockPostgreSQL": l.NewLockPostgreSQL(s.pgDb, hash(pgKey)),
 	}
 }
 
