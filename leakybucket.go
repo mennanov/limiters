@@ -342,12 +342,12 @@ func (t *LeakyBucketRedis) State(ctx context.Context) (LeakyBucketState, error) 
 	}, nil
 }
 
-func checkResponseFromRedis(response interface{}, expected interface{}, expectedIfKeyExpired interface{}) error {
+func checkResponseFromRedis(response interface{}, expected interface{}, expectedIfPreviousVersionExpired interface{}) error {
 	if s, sok := response.(string); sok && s == "RACE_CONDITION" {
 		return ErrRaceCondition
 	}
-	if !reflect.DeepEqual(response, expected) && !reflect.DeepEqual(response, expectedIfKeyExpired) {
-		return errors.Errorf("got %+v from redis, expected %+v or %+v", response, expected, expectedIfKeyExpired)
+	if !reflect.DeepEqual(response, expected) && !reflect.DeepEqual(response, expectedIfPreviousVersionExpired) {
+		return errors.Errorf("got %+v from redis, expected %+v or %+v", response, expected, expectedIfPreviousVersionExpired)
 	}
 
 	return nil
