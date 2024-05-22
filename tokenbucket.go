@@ -331,8 +331,14 @@ const (
 	redisKeyTBVersion   = "version"
 )
 
+// If we do use cluster client and if the cluster is large enough, it is possible that when accessing multiple keys
+// in leaky bucket or token bucket, these keys might go different slots and it will fail with error message
+// `CROSSSLOT Keys in request don't hash to the same slot`. Adding hash tags in redisKey will force them into the
+// same slot for keys with the same prefix.
+//
+// https://redis.io/docs/latest/operate/oss_and_stack/reference/cluster-spec/#hash-tags
 func redisKey(prefix, key string) string {
-	return fmt.Sprintf("%s/%s", prefix, key)
+	return fmt.Sprintf("{%s}%s", prefix, key)
 }
 
 // TokenBucketRedis is a Redis implementation of a TokenBucketStateBackend.

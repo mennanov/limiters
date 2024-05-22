@@ -134,7 +134,7 @@ func (c *ConcurrentBufferRedis) Add(ctx context.Context, key string) (int64, err
 				Score:  float64(now.UnixNano()),
 				Member: key,
 			})
-			countCmd = pipeliner.ZCount(ctx, c.key, "-inf", "+inf")
+			countCmd = pipeliner.ZCard(ctx, c.key)
 			return nil
 		})
 	}()
