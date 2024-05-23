@@ -80,15 +80,17 @@ func (s *LimitersTestSuite) tokenBuckets(capacity int64, refillRate time.Duratio
 
 func (s *LimitersTestSuite) tokenBucketBackends() map[string]l.TokenBucketStateBackend {
 	return map[string]l.TokenBucketStateBackend{
-		"TokenBucketInMemory":               l.NewTokenBucketInMemory(),
-		"TokenBucketEtcdNoRaceCheck":        l.NewTokenBucketEtcd(s.etcdClient, uuid.New().String(), time.Second, false),
-		"TokenBucketEtcdWithRaceCheck":      l.NewTokenBucketEtcd(s.etcdClient, uuid.New().String(), time.Second, true),
-		"TokenBucketRedisNoRaceCheck":       l.NewTokenBucketRedis(s.redisClient, uuid.New().String(), time.Second, false),
-		"TokenBucketRedisWithRaceCheck":     l.NewTokenBucketRedis(s.redisClient, uuid.New().String(), time.Second, true),
-		"TokenBucketMemcachedNoRaceCheck":   l.NewTokenBucketMemcached(s.memcacheClient, uuid.New().String(), time.Second, false),
-		"TokenBucketMemcachedWithRaceCheck": l.NewTokenBucketMemcached(s.memcacheClient, uuid.New().String(), time.Second, true),
-		"TokenBucketDynamoDBNoRaceCheck":    l.NewTokenBucketDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps, time.Second, false),
-		"TokenBucketDynamoDBWithRaceCheck":  l.NewTokenBucketDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps, time.Second, true),
+		"TokenBucketInMemory":                  l.NewTokenBucketInMemory(),
+		"TokenBucketEtcdNoRaceCheck":           l.NewTokenBucketEtcd(s.etcdClient, uuid.New().String(), time.Second, false),
+		"TokenBucketEtcdWithRaceCheck":         l.NewTokenBucketEtcd(s.etcdClient, uuid.New().String(), time.Second, true),
+		"TokenBucketRedisNoRaceCheck":          l.NewTokenBucketRedis(s.redisClient, uuid.New().String(), time.Second, false),
+		"TokenBucketRedisWithRaceCheck":        l.NewTokenBucketRedis(s.redisClient, uuid.New().String(), time.Second, true),
+		"TokenBucketRedisClusterNoRaceCheck":   l.NewTokenBucketRedis(s.redisClusterClient, uuid.New().String(), time.Second, false),
+		"TokenBucketRedisClusterWithRaceCheck": l.NewTokenBucketRedis(s.redisClusterClient, uuid.New().String(), time.Second, true),
+		"TokenBucketMemcachedNoRaceCheck":      l.NewTokenBucketMemcached(s.memcacheClient, uuid.New().String(), time.Second, false),
+		"TokenBucketMemcachedWithRaceCheck":    l.NewTokenBucketMemcached(s.memcacheClient, uuid.New().String(), time.Second, true),
+		"TokenBucketDynamoDBNoRaceCheck":       l.NewTokenBucketDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps, time.Second, false),
+		"TokenBucketDynamoDBWithRaceCheck":     l.NewTokenBucketDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps, time.Second, true),
 	}
 }
 

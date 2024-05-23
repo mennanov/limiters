@@ -20,10 +20,11 @@ func (s *LimitersTestSuite) slidingWindows(capacity int64, rate time.Duration, c
 
 func (s *LimitersTestSuite) slidingWindowIncrementers() map[string]l.SlidingWindowIncrementer {
 	return map[string]l.SlidingWindowIncrementer{
-		"SlidingWindowInMemory":  l.NewSlidingWindowInMemory(),
-		"SlidingWindowRedis":     l.NewSlidingWindowRedis(s.redisClient, uuid.New().String()),
-		"SlidingWindowMemcached": l.NewSlidingWindowMemcached(s.memcacheClient, uuid.New().String()),
-		"SlidingWindowDynamoDB":  l.NewSlidingWindowDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps),
+		"SlidingWindowInMemory":     l.NewSlidingWindowInMemory(),
+		"SlidingWindowRedis":        l.NewSlidingWindowRedis(s.redisClient, uuid.New().String()),
+		"SlidingWindowRedisCluster": l.NewSlidingWindowRedis(s.redisClusterClient, uuid.New().String()),
+		"SlidingWindowMemcached":    l.NewSlidingWindowMemcached(s.memcacheClient, uuid.New().String()),
+		"SlidingWindowDynamoDB":     l.NewSlidingWindowDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps),
 	}
 }
 

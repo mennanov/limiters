@@ -20,10 +20,11 @@ func (s *LimitersTestSuite) fixedWindows(capacity int64, rate time.Duration, clo
 
 func (s *LimitersTestSuite) fixedWindowIncrementers() map[string]l.FixedWindowIncrementer {
 	return map[string]l.FixedWindowIncrementer{
-		"FixedWindowInMemory":  l.NewFixedWindowInMemory(),
-		"FixedWindowRedis":     l.NewFixedWindowRedis(s.redisClient, uuid.New().String()),
-		"FixedWindowMemcached": l.NewFixedWindowMemcached(s.memcacheClient, uuid.New().String()),
-		"FixedWindowDynamoDB":  l.NewFixedWindowDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps),
+		"FixedWindowInMemory":     l.NewFixedWindowInMemory(),
+		"FixedWindowRedis":        l.NewFixedWindowRedis(s.redisClient, uuid.New().String()),
+		"FixedWindowRedisCluster": l.NewFixedWindowRedis(s.redisClusterClient, uuid.New().String()),
+		"FixedWindowMemcached":    l.NewFixedWindowMemcached(s.memcacheClient, uuid.New().String()),
+		"FixedWindowDynamoDB":     l.NewFixedWindowDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps),
 	}
 }
 

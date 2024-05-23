@@ -338,7 +338,7 @@ const (
 //
 // https://redis.io/docs/latest/operate/oss_and_stack/reference/cluster-spec/#hash-tags
 func redisKey(prefix, key string) string {
-	return fmt.Sprintf("{%s}%s", prefix, key)
+	return fmt.Sprintf("%s/%s", prefix, key)
 }
 
 // TokenBucketRedis is a Redis implementation of a TokenBucketStateBackend.
