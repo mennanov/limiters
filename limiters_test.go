@@ -66,7 +66,8 @@ func (c *fakeClock) reset() {
 type LimitersTestSuite struct {
 	suite.Suite
 	etcdClient         *clientv3.Client
-	redisClient        redis.UniversalClient
+	redisClient        *redis.Client
+	redisClusterClient *redis.ClusterClient
 	consulClient       *api.Client
 	zkConn             *zk.Conn
 	logger             *l.StdLogger
@@ -85,6 +86,9 @@ func (s *LimitersTestSuite) SetupSuite() {
 	s.Require().NoError(err)
 	s.redisClient = redis.NewClient(&redis.Options{
 		Addr: os.Getenv("REDIS_ADDR"),
+	})
+	s.redisClusterClient = redis.NewClusterClient(&redis.ClusterOptions{
+		Addrs: strings.Split(os.Getenv("REDIS_NODES"), ","),
 	})
 	s.consulClient, err = api.NewClient(&api.Config{Address: os.Getenv("CONSUL_ADDR")})
 	s.Require().NoError(err)
@@ -130,6 +134,7 @@ func (s *LimitersTestSuite) SetupSuite() {
 func (s *LimitersTestSuite) TearDownSuite() {
 	s.Assert().NoError(s.etcdClient.Close())
 	s.Assert().NoError(s.redisClient.Close())
+	s.Assert().NoError(s.redisClusterClient.Close())
 	s.Assert().NoError(DeleteTestDynamoDBTable(context.Background(), s.dynamodbClient))
 	s.Assert().NoError(s.memcacheClient.Close())
 	s.Assert().NoError(s.pgDb.Close())
@@ -175,12 +180,13 @@ func (s *LimitersTestSuite) distLockers(generateKeys bool) map[string]l.DistLock
 	consulLock, err := s.consulClient.LockKey(consulKey)
 	s.Require().NoError(err)
 	return map[string]l.DistLocker{
-		"LockEtcd":       l.NewLockEtcd(s.etcdClient, etcdKey, s.logger),
-		"LockConsul":     l.NewLockConsul(consulLock),
-		"LockZookeeper":  l.NewLockZookeeper(zk.NewLock(s.zkConn, zkKey, zk.WorldACL(zk.PermAll))),
-		"LockRedis":      l.NewLockRedis(goredis.NewPool(s.redisClient), redisKey),
-		"LockMemcached":  l.NewLockMemcached(s.memcacheClient, memcacheKey),
-		"LockPostgreSQL": l.NewLockPostgreSQL(s.pgDb, hash(pgKey)),
+		"LockEtcd":         l.NewLockEtcd(s.etcdClient, etcdKey, s.logger),
+		"LockConsul":       l.NewLockConsul(consulLock),
+		"LockZookeeper":    l.NewLockZookeeper(zk.NewLock(s.zkConn, zkKey, zk.WorldACL(zk.PermAll))),
+		"LockRedis":        l.NewLockRedis(goredis.NewPool(s.redisClient), redisKey),
+		"LockRedisCluster": l.NewLockRedis(goredis.NewPool(s.redisClusterClient), redisKey),
+		"LockMemcached":    l.NewLockMemcached(s.memcacheClient, memcacheKey),
+		"LockPostgreSQL":   l.NewLockPostgreSQL(s.pgDb, hash(pgKey)),
 	}
 }
 
