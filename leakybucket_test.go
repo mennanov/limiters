@@ -23,15 +23,17 @@ func (s *LimitersTestSuite) leakyBuckets(capacity int64, rate time.Duration, clo
 
 func (s *LimitersTestSuite) leakyBucketBackends() map[string]l.LeakyBucketStateBackend {
 	return map[string]l.LeakyBucketStateBackend{
-		"LeakyBucketInMemory":               l.NewLeakyBucketInMemory(),
-		"LeakyBucketEtcdNoRaceCheck":        l.NewLeakyBucketEtcd(s.etcdClient, uuid.New().String(), time.Second, false),
-		"LeakyBucketEtcdWithRaceCheck":      l.NewLeakyBucketEtcd(s.etcdClient, uuid.New().String(), time.Second, true),
-		"LeakyBucketRedisNoRaceCheck":       l.NewLeakyBucketRedis(s.redisClient, uuid.New().String(), time.Second, false),
-		"LeakyBucketRedisWithRaceCheck":     l.NewLeakyBucketRedis(s.redisClient, uuid.New().String(), time.Second, true),
-		"LeakyBucketMemcachedNoRaceCheck":   l.NewLeakyBucketMemcached(s.memcacheClient, uuid.New().String(), time.Second, false),
-		"LeakyBucketMemcachedWithRaceCheck": l.NewLeakyBucketMemcached(s.memcacheClient, uuid.New().String(), time.Second, true),
-		"LeakyBucketDynamoDBNoRaceCheck":    l.NewLeakyBucketDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps, time.Second, false),
-		"LeakyBucketDynamoDBWithRaceCheck":  l.NewLeakyBucketDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps, time.Second, true),
+		"LeakyBucketInMemory":                  l.NewLeakyBucketInMemory(),
+		"LeakyBucketEtcdNoRaceCheck":           l.NewLeakyBucketEtcd(s.etcdClient, uuid.New().String(), time.Second, false),
+		"LeakyBucketEtcdWithRaceCheck":         l.NewLeakyBucketEtcd(s.etcdClient, uuid.New().String(), time.Second, true),
+		"LeakyBucketRedisNoRaceCheck":          l.NewLeakyBucketRedis(s.redisClient, uuid.New().String(), time.Second, false),
+		"LeakyBucketRedisWithRaceCheck":        l.NewLeakyBucketRedis(s.redisClient, uuid.New().String(), time.Second, true),
+		"LeakyBucketRedisClusterNoRaceCheck":   l.NewLeakyBucketRedis(s.redisClusterClient, uuid.New().String(), time.Second, false),
+		"LeakyBucketRedisClusterWithRaceCheck": l.NewLeakyBucketRedis(s.redisClusterClient, uuid.New().String(), time.Second, true),
+		"LeakyBucketMemcachedNoRaceCheck":      l.NewLeakyBucketMemcached(s.memcacheClient, uuid.New().String(), time.Second, false),
+		"LeakyBucketMemcachedWithRaceCheck":    l.NewLeakyBucketMemcached(s.memcacheClient, uuid.New().String(), time.Second, true),
+		"LeakyBucketDynamoDBNoRaceCheck":       l.NewLeakyBucketDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps, time.Second, false),
+		"LeakyBucketDynamoDBWithRaceCheck":     l.NewLeakyBucketDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps, time.Second, true),
 	}
 }
 
