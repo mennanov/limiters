@@ -1,16 +1,17 @@
 module github.com/mennanov/limiters
 
 go 1.21
+toolchain go1.22.2
 
 require (
 	github.com/aws/aws-sdk-go-v2/config v1.18.17
 	github.com/aws/aws-sdk-go-v2/credentials v1.13.17
 	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.10.18
-	github.com/go-redsync/redsync/v4 v4.8.1
+	github.com/go-redsync/redsync/v4 v4.13.0
 	github.com/google/uuid v1.3.0
 	github.com/hashicorp/consul/api v1.18.0
 	github.com/pkg/errors v0.9.1
-	github.com/redis/go-redis/v9 v9.0.3
+	github.com/redis/go-redis/v9 v9.5.1
 	github.com/samuel/go-zookeeper v0.0.0-20201211165307-7117e9ea2414
 	github.com/stretchr/testify v1.8.3
 	go.etcd.io/etcd/api/v3 v3.5.7
