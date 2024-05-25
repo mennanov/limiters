@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go-version: [ '1.17', '1.18', '1.19', '1.20', '1.21', '1.22' ]
+        go-version: [ '1.21', '1.22' ]
 
     services:
       etcd:
@@ -57,7 +57,7 @@ jobs:
         with:
           go-version: ${{ matrix.go-version }}
       - name: Setup DynamoDB Local
-        uses: rrainn/dynamodb-action@v3.0.0
+        uses: rrainn/dynamodb-action@v4.0.0
         with:
           port: 8000
       - name: Run tests
