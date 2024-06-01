@@ -3,6 +3,7 @@ package limiters_test
 import (
 	"context"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/google/uuid"
@@ -139,4 +140,22 @@ func (s *LimitersTestSuite) TestLeakyBucketOverflow() {
 			s.Equal(rate*2, wait)
 		})
 	}
+}
+
+func BenchmarkLeakyBuckets(b *testing.B) {
+	s := new(LimitersTestSuite)
+	s.SetT(&testing.T{})
+	s.SetupSuite()
+	capacity := int64(1)
+	rate := time.Second
+	clock := newFakeClock()
+	buckets := s.leakyBuckets(capacity, rate, clock)
+	for name, bucket := range buckets {
+		b.Run(name, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_, _ = bucket.Limit(context.TODO())
+			}
+		})
+	}
+	s.TearDownSuite()
 }
