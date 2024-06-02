@@ -2,6 +2,7 @@ package limiters_test
 
 import (
 	"context"
+	"testing"
 	"time"
 
 	"github.com/google/uuid"
@@ -305,4 +306,24 @@ func (s *LimitersTestSuite) TestSlidingWindowOverflowAndWait() {
 			})
 		}
 	}
+}
+
+func BenchmarkSlidingWindows(b *testing.B) {
+	s := new(LimitersTestSuite)
+	s.SetT(&testing.T{})
+	s.SetupSuite()
+	capacity := int64(1)
+	rate := time.Second
+	clock := newFakeClock()
+	epsilon := 1e-9
+	windows := s.slidingWindows(capacity, rate, clock, epsilon)
+	for name, window := range windows {
+		b.Run(name, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_, err := window.Limit(context.TODO())
+				s.Require().NoError(err)
+			}
+		})
+	}
+	s.TearDownSuite()
 }

@@ -143,5 +143,13 @@ If memcached exists already and it is okay to handle burst traffic caused by une
 
 Run tests locally:
 ```bash
+make test
+```
+Run benchmarks locally:
+```bash
+make benchmark
+```
+Run both locally:
+```bash
 make
 ```

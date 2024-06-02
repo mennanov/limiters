@@ -2,6 +2,7 @@ package limiters_test
 
 import (
 	"context"
+	"testing"
 	"time"
 
 	"github.com/google/uuid"
@@ -101,4 +102,23 @@ func (s *LimitersTestSuite) TestFixedWindowOverflow() {
 			s.Equal(time.Duration(0), w)
 		})
 	}
+}
+
+func BenchmarkFixedWindows(b *testing.B) {
+	s := new(LimitersTestSuite)
+	s.SetT(&testing.T{})
+	s.SetupSuite()
+	capacity := int64(1)
+	rate := time.Second
+	clock := newFakeClock()
+	windows := s.fixedWindows(capacity, rate, clock)
+	for name, window := range windows {
+		b.Run(name, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_, err := window.Limit(context.TODO())
+				s.Require().NoError(err)
+			}
+		})
+	}
+	s.TearDownSuite()
 }

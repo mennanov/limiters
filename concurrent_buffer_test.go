@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/google/uuid"
@@ -109,4 +110,22 @@ func (s *LimitersTestSuite) TestConcurrentBufferDuplicateKeys() {
 			s.NoError(buffer.Limit(context.TODO(), "key1"))
 		})
 	}
+}
+
+func BenchmarkConcurrentBuffers(b *testing.B) {
+	s := new(LimitersTestSuite)
+	s.SetT(&testing.T{})
+	s.SetupSuite()
+	capacity := int64(1)
+	ttl := time.Second
+	clock := newFakeClock()
+	buffers := s.concurrentBuffers(capacity, ttl, clock)
+	for name, buffer := range buffers {
+		b.Run(name, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				s.Require().NoError(buffer.Limit(context.TODO(), "key1"))
+			}
+		})
+	}
+	s.TearDownSuite()
 }
