@@ -3,11 +3,4 @@ updates:
   - package-ecosystem: gomod
     directory: /
     schedule:
-      interval: weekly
-    groups:
-      version-updates:
-        dependency-type: production
-        applies-to: version-updates
-      security-updates:
-        dependency-type: production
-        applies-to: security-updates
+      interval: monthly
