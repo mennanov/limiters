@@ -3,6 +3,7 @@ package limiters_test
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
@@ -81,4 +82,20 @@ func TestRegistry_Delete(t *testing.T) {
 	}, time.Second, clock.Now()))
 	registry.Delete("key")
 	assert.False(t, registry.Exists("key"))
+}
+
+// This test is expected to fail when run with the --race flag.
+func TestRegistry_ConcurrentUsage(t *testing.T) {
+	registry := limiters.NewRegistry()
+	clock := newFakeClock()
+	for i := 0; i < 10; i++ {
+		go func(i int) {
+			registry.GetOrCreate(strconv.Itoa(i), func() interface{} { return &struct{}{} }, 0, clock.Now())
+		}(i)
+	}
+	for i := 0; i < 10; i++ {
+		go func(i int) {
+			registry.DeleteExpired(clock.Now())
+		}(i)
+	}
 }
