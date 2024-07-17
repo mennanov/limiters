@@ -46,7 +46,7 @@ type LeakyBucket struct {
 	backend LeakyBucketStateBackend
 	clock   Clock
 	logger  Logger
-	// Capacity is the maximum allowed number of tockens in the bucket.
+	// Capacity is the maximum allowed number of tokens in the bucket.
 	capacity int64
 	// Rate is the output rate: 1 request per the rate duration (in nanoseconds).
 	rate int64
@@ -66,8 +66,7 @@ func NewLeakyBucket(capacity int64, rate time.Duration, locker DistLocker, leaky
 }
 
 // Limit returns the time duration to wait before the request can be processed.
-// If the last request happened earlier than the rate this method returns zero duration.
-// It returns ErrLimitExhausted if the the request overflows the bucket's capacity. In this case the returned duration
+// It returns ErrLimitExhausted if the request overflows the bucket's capacity. In this case the returned duration
 // means how long it would have taken to wait for the request to be processed if the bucket was not overflowed.
 func (t *LeakyBucket) Limit(ctx context.Context) (time.Duration, error) {
 	t.mu.Lock()
@@ -100,7 +99,7 @@ func (t *LeakyBucket) Limit(ctx context.Context) (time.Duration, error) {
 	}
 
 	wait := state.Last - now
-	if wait/t.rate > t.capacity {
+	if wait/t.rate >= t.capacity {
 		return time.Duration(wait), ErrLimitExhausted
 	}
 	if err = t.backend.SetState(ctx, state); err != nil {

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
 
 	l "github.com/mennanov/limiters"
 )
@@ -116,7 +117,7 @@ func (s *LimitersTestSuite) TestLeakyBucketOverflow() {
 	for name, bucket := range s.leakyBuckets(capacity, rate, clock) {
 		s.Run(name, func() {
 			clock.reset()
-			// The first call has no wait since there were no calls before. It does not increment the queue size.
+			// The first call has no wait since there were no calls before.
 			wait, err := bucket.Limit(context.TODO())
 			s.Require().NoError(err)
 			s.Equal(time.Duration(0), wait)
@@ -124,22 +125,28 @@ func (s *LimitersTestSuite) TestLeakyBucketOverflow() {
 			wait, err = bucket.Limit(context.TODO())
 			s.Require().NoError(err)
 			s.Equal(rate, wait)
-			// The third call increments the queue size by 1.
-			wait, err = bucket.Limit(context.TODO())
-			s.Require().NoError(err)
-			s.Equal(rate*2, wait)
 			// The third call overflows the bucket capacity.
 			wait, err = bucket.Limit(context.TODO())
 			s.Require().Equal(l.ErrLimitExhausted, err)
-			s.Equal(rate*3, wait)
+			s.Equal(rate*2, wait)
 			// Move the Clock 1 position forward.
 			clock.Sleep(rate)
 			// Retry the last call. This time it should succeed.
 			wait, err = bucket.Limit(context.TODO())
 			s.Require().NoError(err)
-			s.Equal(rate*2, wait)
+			s.Equal(rate, wait)
 		})
 	}
+}
+
+func TestLeakyBucket_ZeroCapacity_ReturnsError(t *testing.T) {
+	capacity := int64(0)
+	rate := time.Hour
+	logger := l.NewStdLogger()
+	bucket := l.NewLeakyBucket(capacity, rate, l.NewLockNoop(), l.NewLeakyBucketInMemory(), newFakeClock(), logger)
+	wait, err := bucket.Limit(context.TODO())
+	require.Equal(t, l.ErrLimitExhausted, err)
+	require.Equal(t, time.Duration(0), wait)
 }
 
 func BenchmarkLeakyBuckets(b *testing.B) {
