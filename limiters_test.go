@@ -96,17 +96,8 @@ func (s *LimitersTestSuite) SetupSuite() {
 	s.Require().NoError(err)
 	s.logger = l.NewStdLogger()
 
-	awsResolver := aws.EndpointResolverWithOptionsFunc(func(service string, region string, options ...interface{}) (aws.Endpoint, error) {
-		return aws.Endpoint{
-			PartitionID:       "aws",
-			URL:               fmt.Sprintf("http://%s", os.Getenv("AWS_ADDR")),
-			SigningRegion:     "us-east-1",
-			HostnameImmutable: true,
-		}, nil
-	})
 	awsCfg, err := config.LoadDefaultConfig(context.Background(),
 		config.WithRegion("us-east-1"),
-		config.WithEndpointResolverWithOptions(awsResolver),
 		config.WithCredentialsProvider(credentials.StaticCredentialsProvider{
 			Value: aws.Credentials{
 				AccessKeyID: "dummy", SecretAccessKey: "dummy", SessionToken: "dummy",
@@ -116,7 +107,10 @@ func (s *LimitersTestSuite) SetupSuite() {
 	)
 	s.Require().NoError(err)
 
-	s.dynamodbClient = dynamodb.NewFromConfig(awsCfg)
+	endpoint := fmt.Sprintf("http://%s", os.Getenv("AWS_ADDR"))
+	s.dynamodbClient = dynamodb.NewFromConfig(awsCfg, func(options *dynamodb.Options) {
+		options.BaseEndpoint = &endpoint
+	})
 
 	_ = DeleteTestDynamoDBTable(context.Background(), s.dynamodbClient)
 	s.Require().NoError(CreateTestDynamoDBTable(context.Background(), s.dynamodbClient))
