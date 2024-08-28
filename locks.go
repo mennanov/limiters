@@ -193,12 +193,12 @@ func (l *LockMemcached) Unlock(ctx context.Context) error {
 // LockPostgreSQL is an implementation of the DistLocker interface using PostgreSQL's advisory lock.
 type LockPostgreSQL struct {
 	db *sql.DB
-	id uint32
+	id int64
 	tx *sql.Tx
 }
 
 // NewLockPostgreSQL creates a new LockPostgreSQL.
-func NewLockPostgreSQL(db *sql.DB, id uint32) *LockPostgreSQL {
+func NewLockPostgreSQL(db *sql.DB, id int64) *LockPostgreSQL {
 	return &LockPostgreSQL{db, id, nil}
 }
 

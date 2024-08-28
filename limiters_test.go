@@ -145,13 +145,13 @@ func (s *LimitersTestSuite) lockers(generateKeys bool) map[string]l.DistLocker {
 	return lockers
 }
 
-func hash(s string) uint32 {
+func hash(s string) int64 {
 	h := fnv.New32a()
 	_, err := h.Write([]byte(s))
 	if err != nil {
 		panic(err)
 	}
-	return h.Sum32()
+	return int64(h.Sum32())
 }
 
 // distLockers returns distributed lockers only.
