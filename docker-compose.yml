@@ -19,8 +19,9 @@ services:
     image: grokzen/redis-cluster:7.0.10
     environment:
       IP: "0.0.0.0"
+      INITIAL_PORT: 11000
     ports:
-      - "7000-7005:7000-7005"
+      - "11000-11005:11000-11005"
 
   memcached:
     image: bitnami/memcached
