@@ -4,15 +4,16 @@ package examples
 import (
 	"context"
 	"fmt"
-	"google.golang.org/grpc/credentials/insecure"
 	"log"
 	"net"
 	"os"
 	"strings"
 	"time"
 
+	clientv3 "go.etcd.io/etcd/client/v3"
+	"google.golang.org/grpc/credentials/insecure"
+
 	"github.com/redis/go-redis/v9"
-	"go.etcd.io/etcd/client/v3"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -79,7 +80,7 @@ func Example_simpleGRPCLimiter() {
 	defer s.GracefulStop()
 
 	// Set up a client connection to the server.
-	conn, err := grpc.Dial(fmt.Sprintf("localhost%s", port), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(fmt.Sprintf("localhost%s", port), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Fatalf("did not connect: %v", err)
 	}
