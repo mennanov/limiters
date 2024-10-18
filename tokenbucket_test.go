@@ -205,6 +205,51 @@ func (s *LimitersTestSuite) TestTokenBucketRefill() {
 	}
 }
 
+func (s *LimitersTestSuite) TestTokenBucketReset() {
+	for name, backend := range s.tokenBucketBackends() {
+		s.Run(name, func() {
+			clock := newFakeClock()
+
+			bucketCapacity := 2
+			bucket := l.NewTokenBucket(int64(bucketCapacity), time.Second*1, l.NewLockNoop(), backend, clock, s.logger)
+
+			// Check while Bucket is full, partial, empty
+			noOfAccess := []int{0, 1, 2, 3}
+
+			for access := range noOfAccess {
+				clock.reset()
+				for i := range access {
+					_, err := bucket.Limit(context.TODO())
+
+					// Handle err when bucket capacity is reached
+					if i >= bucketCapacity {
+						s.Require().Equal(l.ErrLimitExhausted, err)
+						continue
+					} else {
+						s.Require().NoError(err)
+					}
+				}
+
+				_, err := bucket.Reset(context.TODO())
+				s.Require().NoError(err)
+
+				// Since bucket state is zero valued, Limit needs to be invoked
+				wait, err := bucket.Limit(context.TODO())
+				s.Require().NoError(err)
+				s.Equal(time.Duration(0), wait)
+
+				state, err := backend.State(context.TODO())
+				s.Require().NoError(err, "unable to retrieve backend state")
+				s.Require().Equal(int64(bucketCapacity-1), state.Available)
+
+				// Cleanup, Set Bucket to initial state
+				_, err = bucket.Reset(context.TODO())
+				s.Require().NoError(err)
+			}
+		})
+	}
+}
+
 func BenchmarkTokenBuckets(b *testing.B) {
 	s := new(LimitersTestSuite)
 	s.SetT(&testing.T{})

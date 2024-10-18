@@ -122,6 +122,33 @@ func (t *TokenBucket) Limit(ctx context.Context) (time.Duration, error) {
 	return t.Take(ctx, 1)
 }
 
+// Reset the bucket to zero state
+func (t *TokenBucket) Reset(ctx context.Context) (time.Duration, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if err := t.locker.Lock(ctx); err != nil {
+		return 0, err
+	}
+	defer func() {
+		if err := t.locker.Unlock(ctx); err != nil {
+			t.logger.Log(err)
+		}
+	}()
+	state, err := t.backend.State(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	// Reset bucket to initial state
+	state.Available = 0
+	state.Last = 0
+
+	if err = t.backend.SetState(ctx, state); err != nil {
+		return 0, err
+	}
+	return 0, nil
+}
+
 // TokenBucketInMemory is an in-memory implementation of TokenBucketStateBackend.
 //
 // The state is not shared nor persisted so it won't survive restarts or failures.
