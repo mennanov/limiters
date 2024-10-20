@@ -213,8 +213,8 @@ func (s *LimitersTestSuite) TestTokenBucketReset() {
 			bucketCapacity := 2
 			bucket := l.NewTokenBucket(int64(bucketCapacity), time.Second*1, l.NewLockNoop(), backend, clock, s.logger)
 
-			// Check while Bucket is full, partial, empty
-			noOfAccess := []int{0, 1, 2, 3}
+			// Check while Bucket is full, partially full and empty
+			noOfAccess := 4
 
 			for access := range noOfAccess {
 				clock.reset()
@@ -224,7 +224,6 @@ func (s *LimitersTestSuite) TestTokenBucketReset() {
 					// Handle err when bucket capacity is reached
 					if i >= bucketCapacity {
 						s.Require().Equal(l.ErrLimitExhausted, err)
-						continue
 					} else {
 						s.Require().NoError(err)
 					}
