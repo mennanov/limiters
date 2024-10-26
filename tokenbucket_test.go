@@ -175,6 +175,32 @@ func (s *LimitersTestSuite) TestTokenBucketOverflow() {
 	}
 }
 
+func (s *LimitersTestSuite) TestTokenBucketReset() {
+	clock := newFakeClock()
+	rate := time.Second
+	for name, bucket := range s.tokenBuckets(2, rate, clock) {
+		s.Run(name, func() {
+			clock.reset()
+			wait, err := bucket.Limit(context.TODO())
+			s.Require().NoError(err)
+			s.Equal(time.Duration(0), wait)
+			wait, err = bucket.Limit(context.TODO())
+			s.Require().NoError(err)
+			s.Equal(time.Duration(0), wait)
+			// The third call should fail.
+			wait, err = bucket.Limit(context.TODO())
+			s.Require().Equal(l.ErrLimitExhausted, err)
+			s.Equal(rate, wait)
+			err = bucket.Reset(context.TODO())
+			s.Require().NoError(err)
+			// Retry the last call.
+			wait, err = bucket.Limit(context.TODO())
+			s.Require().NoError(err)
+			s.Equal(time.Duration(0), wait)
+		})
+	}
+}
+
 func (s *LimitersTestSuite) TestTokenBucketRefill() {
 	for name, backend := range s.tokenBucketBackends() {
 		s.Run(name, func() {

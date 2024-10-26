@@ -124,6 +124,11 @@ func (t *TokenBucket) Limit(ctx context.Context) (time.Duration, error) {
 	return t.Take(ctx, 1)
 }
 
+// Reset resets the bucket.
+func (t *TokenBucket) Reset(ctx context.Context) error {
+	return t.backend.Reset(ctx)
+}
+
 // TokenBucketInMemory is an in-memory implementation of TokenBucketStateBackend.
 //
 // The state is not shared nor persisted so it won't survive restarts or failures.
@@ -149,6 +154,15 @@ func (t *TokenBucketInMemory) State(ctx context.Context) (TokenBucketState, erro
 func (t *TokenBucketInMemory) SetState(ctx context.Context, state TokenBucketState) error {
 	t.state = state
 	return ctx.Err()
+}
+
+// Reset resets the current bucket's state.
+func (t *TokenBucketInMemory) Reset(ctx context.Context) error {
+	state := TokenBucketState{
+		Last:      0,
+		Available: 0,
+	}
+	return t.SetState(ctx, state)
 }
 
 const (
@@ -327,6 +341,15 @@ func (t *TokenBucketEtcd) SetState(ctx context.Context, state TokenBucketState) 
 	return t.save(ctx, state)
 }
 
+// Reset resets the state of the bucket.
+func (t *TokenBucketEtcd) Reset(ctx context.Context) error {
+	state := TokenBucketState{
+		Last:      0,
+		Available: 0,
+	}
+	return t.SetState(ctx, state)
+}
+
 const (
 	redisKeyTBAvailable = "available"
 	redisKeyTBLast      = "last"
@@ -489,6 +512,15 @@ func (t *TokenBucketRedis) SetState(ctx context.Context, state TokenBucketState)
 	return errors.Wrap(err, "failed to save keys to redis")
 }
 
+// Reset resets the state in Redis.
+func (t *TokenBucketRedis) Reset(ctx context.Context) error {
+	state := TokenBucketState{
+		Last:      0,
+		Available: 0,
+	}
+	return t.SetState(ctx, state)
+}
+
 // TokenBucketMemcached is a Memcached implementation of a TokenBucketStateBackend.
 //
 // Memcached is a distributed memory object caching system.
@@ -581,6 +613,17 @@ func (t *TokenBucketMemcached) SetState(ctx context.Context, state TokenBucketSt
 	return errors.Wrap(err, "failed to save keys to memcached")
 }
 
+// Reset resets the state in Memcached.
+func (t *TokenBucketMemcached) Reset(ctx context.Context) error {
+	state := TokenBucketState{
+		Last:      0,
+		Available: 0,
+	}
+	// Override casId to 0 to Set instead of CompareAndSwap in SetState
+	t.casId = 0
+	return t.SetState(ctx, state)
+}
+
 // TokenBucketDynamoDB is a DynamoDB implementation of a TokenBucketStateBackend.
 type TokenBucketDynamoDB struct {
 	client        *dynamodb.Client
@@ -650,6 +693,15 @@ func (t *TokenBucketDynamoDB) SetState(ctx context.Context, state TokenBucketSta
 	}
 
 	return err
+}
+
+// Reset resets the state in DynamoDB.
+func (t *TokenBucketDynamoDB) Reset(ctx context.Context) error {
+	state := TokenBucketState{
+		Last:      0,
+		Available: 0,
+	}
+	return t.SetState(ctx, state)
 }
 
 const dynamoDBBucketAvailableKey = "Available"
