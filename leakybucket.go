@@ -38,6 +38,8 @@ type LeakyBucketStateBackend interface {
 	State(ctx context.Context) (LeakyBucketState, error)
 	// SetState sets (persists) the current state of the LeakyBucket.
 	SetState(ctx context.Context, state LeakyBucketState) error
+	// Reset resets (persists) the current state of the LeakyBucket.
+	Reset(ctx context.Context) error
 }
 
 // LeakyBucket implements the https://en.wikipedia.org/wiki/Leaky_bucket#As_a_queue algorithm.

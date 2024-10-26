@@ -40,6 +40,8 @@ type TokenBucketStateBackend interface {
 	State(ctx context.Context) (TokenBucketState, error)
 	// SetState sets (persists) the current state of the TokenBucket.
 	SetState(ctx context.Context, state TokenBucketState) error
+	// Reset resets (persists) the current state of the TokenBucket.
+	Reset(ctx context.Context) error
 }
 
 // TokenBucket implements the https://en.wikipedia.org/wiki/Token_bucket algorithm.
