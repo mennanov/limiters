@@ -38,6 +38,8 @@ type LeakyBucketStateBackend interface {
 	State(ctx context.Context) (LeakyBucketState, error)
 	// SetState sets (persists) the current state of the LeakyBucket.
 	SetState(ctx context.Context, state LeakyBucketState) error
+	// Reset resets (persists) the current state of the LeakyBucket.
+	Reset(ctx context.Context) error
 }
 
 // LeakyBucket implements the https://en.wikipedia.org/wiki/Leaky_bucket#As_a_queue algorithm.
@@ -108,6 +110,11 @@ func (t *LeakyBucket) Limit(ctx context.Context) (time.Duration, error) {
 	return time.Duration(wait), nil
 }
 
+// Reset resets the bucket.
+func (t *LeakyBucket) Reset(ctx context.Context) error {
+	return t.backend.Reset(ctx)
+}
+
 // LeakyBucketInMemory is an in-memory implementation of LeakyBucketStateBackend.
 type LeakyBucketInMemory struct {
 	state LeakyBucketState
@@ -127,6 +134,14 @@ func (l *LeakyBucketInMemory) State(ctx context.Context) (LeakyBucketState, erro
 func (l *LeakyBucketInMemory) SetState(ctx context.Context, state LeakyBucketState) error {
 	l.state = state
 	return ctx.Err()
+}
+
+// Reset resets the current state of the bucket.
+func (l *LeakyBucketInMemory) Reset(ctx context.Context) error {
+	state := LeakyBucketState{
+		Last: 0,
+	}
+	return l.SetState(ctx, state)
 }
 
 const (
@@ -264,6 +279,14 @@ func (l *LeakyBucketEtcd) SetState(ctx context.Context, state LeakyBucketState) 
 	return l.save(ctx, state)
 }
 
+// Reset resets the state of the bucket in etcd.
+func (l *LeakyBucketEtcd) Reset(ctx context.Context) error {
+	state := LeakyBucketState{
+		Last: 0,
+	}
+	return l.SetState(ctx, state)
+}
+
 const (
 	redisKeyLBLast    = "last"
 	redisKeyLBVersion = "version"
@@ -399,6 +422,14 @@ func (t *LeakyBucketRedis) SetState(ctx context.Context, state LeakyBucketState)
 	return errors.Wrap(err, "failed to save keys to redis")
 }
 
+// Reset resets the state in Redis.
+func (t *LeakyBucketRedis) Reset(ctx context.Context) error {
+	state := LeakyBucketState{
+		Last: 0,
+	}
+	return t.SetState(ctx, state)
+}
+
 // LeakyBucketMemcached is a Memcached implementation of a LeakyBucketStateBackend.
 type LeakyBucketMemcached struct {
 	cli       *memcache.Client
@@ -489,6 +520,15 @@ func (t *LeakyBucketMemcached) SetState(ctx context.Context, state LeakyBucketSt
 	return errors.Wrap(err, "failed to save keys to memcached")
 }
 
+// Reset resets the state in Memcached.
+func (t *LeakyBucketMemcached) Reset(ctx context.Context) error {
+	state := LeakyBucketState{
+		Last: 0,
+	}
+	t.casId = 0
+	return t.SetState(ctx, state)
+}
+
 // LeakyBucketDynamoDB is a DyanamoDB implementation of a LeakyBucketStateBackend.
 type LeakyBucketDynamoDB struct {
 	client        *dynamodb.Client
@@ -558,6 +598,14 @@ func (t *LeakyBucketDynamoDB) SetState(ctx context.Context, state LeakyBucketSta
 	}
 
 	return err
+}
+
+// Reset resets the state in DynamoDB.
+func (t *LeakyBucketDynamoDB) Reset(ctx context.Context) error {
+	state := LeakyBucketState{
+		Last: 0,
+	}
+	return t.SetState(ctx, state)
 }
 
 const (

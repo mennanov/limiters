@@ -139,6 +139,36 @@ func (s *LimitersTestSuite) TestLeakyBucketOverflow() {
 	}
 }
 
+func (s *LimitersTestSuite) TestLeakyBucketReset() {
+	rate := time.Second
+	capacity := int64(2)
+	clock := newFakeClock()
+	for name, bucket := range s.leakyBuckets(capacity, rate, clock) {
+		s.Run(name, func() {
+			clock.reset()
+			// The first call has no wait since there were no calls before.
+			wait, err := bucket.Limit(context.TODO())
+			s.Require().NoError(err)
+			s.Equal(time.Duration(0), wait)
+			// The second call increments the queue size by 1.
+			wait, err = bucket.Limit(context.TODO())
+			s.Require().NoError(err)
+			s.Equal(rate, wait)
+			// The third call overflows the bucket capacity.
+			wait, err = bucket.Limit(context.TODO())
+			s.Require().Equal(l.ErrLimitExhausted, err)
+			s.Equal(rate*2, wait)
+			// Reset the bucket
+			err = bucket.Reset(context.TODO())
+			s.Require().NoError(err)
+			// Retry the last call. This time it should succeed.
+			wait, err = bucket.Limit(context.TODO())
+			s.Require().NoError(err)
+			s.Equal(time.Duration(0), wait)
+		})
+	}
+}
+
 func TestLeakyBucket_ZeroCapacity_ReturnsError(t *testing.T) {
 	capacity := int64(0)
 	rate := time.Hour
