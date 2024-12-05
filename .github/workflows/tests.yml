@@ -78,7 +78,6 @@ jobs:
           MEMCACHED_ADDR: '127.0.0.1:11211'
           POSTGRES_URL: postgres://postgres@localhost:5432/?sslmode=disable
         run: go test -race -v -coverprofile=coverage.txt -covermode=atomic ./...
-      - uses: codecov/codecov-action@v4.1.0
+      - uses: codecov/codecov-action@v5
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
           verbose: true
