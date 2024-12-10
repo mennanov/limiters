@@ -199,6 +199,17 @@ func NewFixedWindowDynamoDB(client *dynamodb.Client, partitionKey string, props 
 	}
 }
 
+type contextKey int
+
+var fixedWindowDynamoDBPartitionKey contextKey
+
+// NewFixedWindowDynamoDBContext creates a context for FixedWindowDynamoDB with a partition key.
+//
+// This context can be used to control the partition key per-request.
+func NewFixedWindowDynamoDBContext(ctx context.Context, partitionKey string) context.Context {
+	return context.WithValue(ctx, fixedWindowDynamoDBPartitionKey, partitionKey)
+}
+
 const (
 	fixedWindowDynamoDBUpdateExpression = "SET #C = if_not_exists(#C, :def) + :inc, #TTL = :ttl"
 	dynamodbWindowCountKey              = "Count"
@@ -212,9 +223,13 @@ func (f *FixedWindowDynamoDB) Increment(ctx context.Context, window time.Time, t
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
+		partitionKey := f.partitionKey
+		if key, ok := ctx.Value(fixedWindowDynamoDBPartitionKey).(string); ok {
+			partitionKey = key
+		}
 		resp, err = f.client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 			Key: map[string]types.AttributeValue{
-				f.tableProps.PartitionKeyName: &types.AttributeValueMemberS{Value: f.partitionKey},
+				f.tableProps.PartitionKeyName: &types.AttributeValueMemberS{Value: partitionKey},
 				f.tableProps.SortKeyName:      &types.AttributeValueMemberS{Value: strconv.FormatInt(window.UnixNano(), 10)},
 			},
 			UpdateExpression: aws.String(fixedWindowDynamoDBUpdateExpression),

@@ -104,6 +104,23 @@ func (s *LimitersTestSuite) TestFixedWindowOverflow() {
 	}
 }
 
+func (s *LimitersTestSuite) TestFixedWindowDynamoDBPartitionKey() {
+	clock := newFakeClockWithTime(time.Date(2019, 8, 30, 0, 0, 0, 0, time.UTC))
+	incrementor := l.NewFixedWindowDynamoDB(s.dynamodbClient, "partitionKey1", s.dynamoDBTableProps)
+	window := l.NewFixedWindow(2, time.Millisecond*100, incrementor, clock)
+
+	w, err := window.Limit(context.TODO())
+	s.Require().NoError(err)
+	s.Equal(time.Duration(0), w)
+	w, err = window.Limit(context.TODO())
+	s.Require().NoError(err)
+	s.Equal(time.Duration(0), w)
+	// The third call should fail for the "partitionKey1", but succeed for "partitionKey2".
+	w, err = window.Limit(l.NewFixedWindowDynamoDBContext(context.Background(), "partitionKey2"))
+	s.Require().NoError(err)
+	s.Equal(time.Duration(0), w)
+}
+
 func BenchmarkFixedWindows(b *testing.B) {
 	s := new(LimitersTestSuite)
 	s.SetT(&testing.T{})
