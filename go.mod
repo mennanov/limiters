@@ -20,7 +20,7 @@ require (
 )
 
 require (
-	github.com/aws/aws-sdk-go-v2 v1.32.5
+	github.com/aws/aws-sdk-go-v2 v1.32.7
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.37.1
 	github.com/cenkalti/backoff/v3 v3.2.2
 	github.com/lib/pq v1.10.9
