@@ -3,6 +3,7 @@ package limiters
 import (
 	"context"
 	"fmt"
+	"math"
 	"strconv"
 	"sync"
 	"time"
@@ -56,6 +57,11 @@ func (s *SlidingWindow) Limit(ctx context.Context) (time.Duration, error) {
 	if err != nil {
 		return 0, err
 	}
+
+	// "prev" and "curr" are capped at "s.capacity + s.epsilon" using math.Ceil to round up any fractional values,
+	// ensuring that in the worst case, "total" can be slightly greater than "s.capacity".
+	prev = int64(math.Min(float64(prev), math.Ceil(float64(s.capacity)+s.epsilon)))
+	curr = int64(math.Min(float64(curr), math.Ceil(float64(s.capacity)+s.epsilon)))
 
 	total := float64(prev*int64(ttl))/float64(s.rate) + float64(curr)
 	if total-float64(s.capacity) >= s.epsilon {
