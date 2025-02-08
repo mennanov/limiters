@@ -308,6 +308,44 @@ func (s *LimitersTestSuite) TestSlidingWindowOverflowAndWait() {
 	}
 }
 
+func (s *LimitersTestSuite) TestSlidingWindowOverflowAndNoWait() {
+	capacity := int64(3)
+	clock := newFakeClock()
+	for name, bucket := range s.slidingWindows(capacity, time.Second, clock, 1e-9) {
+		s.Run(name, func() {
+			clock.reset()
+
+			// Keep sending requests until it reaches the capacity.
+			for i := int64(0); i < capacity; i++ {
+				w, err := bucket.Limit(context.TODO())
+				s.Require().NoError(err)
+				s.Require().Equal(time.Duration(0), w)
+				clock.Sleep(time.Millisecond)
+			}
+
+			// The next request will be the first one to be rejected.
+			w, err := bucket.Limit(context.TODO())
+			s.Require().Equal(l.ErrLimitExhausted, err)
+			expected := clock.Now().Add(w)
+
+			// Send a few more requests, all of them should be told to come back at the same time.
+			for i := int64(0); i < capacity; i++ {
+				w, err = bucket.Limit(context.TODO())
+				s.Require().Equal(l.ErrLimitExhausted, err)
+				actual := clock.Now().Add(w)
+				s.Require().Equal(expected, actual, i)
+				clock.Sleep(time.Millisecond)
+			}
+
+			// Wait until it is ready.
+			clock.Sleep(expected.Sub(clock.Now()))
+			w, err = bucket.Limit(context.TODO())
+			s.Require().NoError(err)
+			s.Require().Equal(time.Duration(0), w)
+		})
+	}
+}
+
 func BenchmarkSlidingWindows(b *testing.B) {
 	s := new(LimitersTestSuite)
 	s.SetT(&testing.T{})
