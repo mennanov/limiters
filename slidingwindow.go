@@ -286,7 +286,7 @@ func (s *SlidingWindowDynamoDB) Increment(ctx context.Context, prev, curr time.T
 
 		var tmp float64
 		currentErr = attributevalue.Unmarshal(resp.Attributes[dynamodbWindowCountKey], &tmp)
-		if err != nil {
+		if currentErr != nil {
 			return
 		}
 
