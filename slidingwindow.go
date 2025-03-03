@@ -2,12 +2,14 @@ package limiters
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/data/azcosmos"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -280,13 +282,14 @@ func (s *SlidingWindowDynamoDB) Increment(ctx context.Context, prev, curr time.T
 		})
 
 		if err != nil {
-			currentErr = err
+			currentErr = errors.Wrap(err, "dynamodb get item failed")
 			return
 		}
 
 		var tmp float64
-		currentErr = attributevalue.Unmarshal(resp.Attributes[dynamodbWindowCountKey], &tmp)
-		if currentErr != nil {
+		err = attributevalue.Unmarshal(resp.Attributes[dynamodbWindowCountKey], &tmp)
+		if err != nil {
+			currentErr = errors.Wrap(err, "unmarshal of dynamodb attribute value failed")
 			return
 		}
 
@@ -324,6 +327,127 @@ func (s *SlidingWindowDynamoDB) Increment(ctx context.Context, prev, curr time.T
 		}
 
 		priorCount = int64(count)
+	}()
+
+	select {
+	case <-done:
+	case <-ctx.Done():
+		return 0, 0, ctx.Err()
+	}
+
+	if currentErr != nil {
+		return 0, 0, errors.Wrap(currentErr, "failed to update current count")
+	} else if priorErr != nil {
+		return 0, 0, errors.Wrap(priorErr, "failed to get previous count")
+	}
+
+	return priorCount, currentCount, nil
+}
+
+// SlidingWindowCosmos implements SlidingWindow in Azure Cosmos DB.
+type SlidingWindowCosmos struct {
+	client       *azcosmos.ContainerClient
+	partitionKey azcosmos.PartitionKey
+}
+
+type cosmosItem struct {
+	CurCount  int64 `json:"CurCount"`
+	PrevCount int64 `json:"PrevCount"`
+
+	PartitionKey string `json:"partitionKey"`
+	ID           string `json:"id"`
+	// https://learn.microsoft.com/en-us/azure/cosmos-db/nosql/time-to-live
+	TTL int32 `json:"ttl"`
+
+	// Etag string `json:"_etag"`
+	// Ts   int    `json:"_ts"`
+}
+
+// NewSlidingWindowCosmos creates a new instance of SlidingWindowCosmos.
+// PartitionKey is the key used to store all the this implementation in Cosmos.
+func NewSlidingWindowCosmos(client *azcosmos.ContainerClient, partitionKey azcosmos.PartitionKey) *SlidingWindowCosmos {
+	return &SlidingWindowCosmos{
+		client:       client,
+		partitionKey: partitionKey,
+	}
+}
+
+// Increment increments the current window's counter in Cosmos and returns the number of requests in the previous window
+// and the current one.
+func (s *SlidingWindowCosmos) Increment(ctx context.Context, prev, curr time.Time, ttl time.Duration) (int64, int64, error) {
+	wg := &sync.WaitGroup{}
+	wg.Add(2)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		wg.Wait()
+	}()
+
+	var currentCount int64
+	var currentErr error
+	go func() {
+		defer wg.Done()
+
+		id := strconv.FormatInt(prev.UnixNano(), 10)
+		tmp := cosmosItem{
+			ID: id,
+		}
+		readResp, err := s.client.ReadItem(ctx, s.partitionKey, id, &azcosmos.ItemOptions{})
+		if err == nil {
+			err = json.Unmarshal(readResp.Value, &tmp)
+			if err != nil {
+				currentErr = errors.Wrap(err, "unmarshal of cosmos value current failed")
+				return
+			}
+		}
+		tmp.CurCount += 1
+		tmp.TTL = int32(time.Now().Add(ttl).Unix())
+
+		newValue, err := json.Marshal(tmp)
+		if currentErr != nil {
+			currentErr = errors.Wrap(err, "marshal of cosmos value current failed")
+			return
+		}
+
+		upsertResp, err := s.client.UpsertItem(ctx, s.partitionKey, newValue, &azcosmos.ItemOptions{
+			SessionToken:                 readResp.SessionToken,
+			IfMatchEtag:                  &readResp.ETag,
+			EnableContentResponseOnWrite: true,
+		})
+		if err != nil {
+			currentErr = errors.Wrap(err, "upsert of cosmos value current failed")
+			return
+		}
+
+		err = json.Unmarshal(upsertResp.Value, &tmp)
+		if err != nil {
+			currentErr = errors.Wrap(err, "unmarshal of upserted cosmos value current failed")
+			return
+		}
+
+		currentCount = tmp.CurCount
+	}()
+
+	var priorCount int64
+	var priorErr error
+	go func() {
+		defer wg.Done()
+
+		resp, err := s.client.ReadItem(ctx, s.partitionKey, strconv.FormatInt(prev.UnixNano(), 10), &azcosmos.ItemOptions{})
+		if err != nil {
+			priorErr = errors.Wrap(err, "cosmos get item prior failed")
+			return
+		}
+
+		var tmp cosmosItem
+		currentErr = json.Unmarshal(resp.Value, &tmp)
+		if currentErr != nil {
+			priorErr = errors.Wrap(err, "unmarshal of cosmos value prior failed")
+			return
+		}
+
+		priorCount = tmp.PrevCount
 	}()
 
 	select {
