@@ -127,7 +127,9 @@ func (s *LimitersTestSuite) SetupSuite() {
 	s.Require().NoError(err)
 	s.Require().NoError(s.pgDb.Ping())
 
-	s.cosmosClient, err = azcosmos.NewClient(os.Getenv("COSMOS_ADDR"), nil, &azcosmos.ClientOptions{})
+	// https://learn.microsoft.com/en-us/azure/cosmos-db/emulator#authentication
+	connString := fmt.Sprintf("AccountEndpoint=http://%s/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==;", os.Getenv("COSMOS_ADDR"))
+	s.cosmosClient, err = azcosmos.NewClientFromConnectionString(connString, &azcosmos.ClientOptions{})
 	s.Require().NoError(err)
 	s.Require().NoError(CreateCosmosDBContainer(context.Background(), s.cosmosClient))
 

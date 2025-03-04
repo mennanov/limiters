@@ -55,7 +55,10 @@ services:
 
   cosmos:
     image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview
+    command: [ "--protocol", "http" ]
     environment:
-      PROTOCOL: https
+      PROTOCOL: http
+      COSMOS_HTTP_CONNECTION_WITHOUT_TLS_ALLOWED: "true"
+      GATEWAY_PUBLIC_ENDPOINT: cosmos
     ports:
       - "8081:8081"
