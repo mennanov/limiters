@@ -59,6 +59,5 @@ services:
     environment:
       PROTOCOL: http
       COSMOS_HTTP_CONNECTION_WITHOUT_TLS_ALLOWED: "true"
-      GATEWAY_PUBLIC_ENDPOINT: cosmos
     ports:
       - "8081:8081"

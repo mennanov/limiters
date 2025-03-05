@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/data/azcosmos"
 	"github.com/google/uuid"
 
 	l "github.com/mennanov/limiters"
@@ -27,7 +26,7 @@ func (s *LimitersTestSuite) slidingWindowIncrementers() map[string]l.SlidingWind
 		"SlidingWindowRedisCluster": l.NewSlidingWindowRedis(s.redisClusterClient, uuid.New().String()),
 		"SlidingWindowMemcached":    l.NewSlidingWindowMemcached(s.memcacheClient, uuid.New().String()),
 		"SlidingWindowDynamoDB":     l.NewSlidingWindowDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps),
-		"SlidingWindowCosmos":       l.NewSlidingWindowCosmos(s.cosmosContainerClient, azcosmos.NewPartitionKey().AppendString(uuid.New().String())),
+		"SlidingWindowCosmos":       l.NewSlidingWindowCosmos(s.cosmosContainerClient, uuid.New().String()),
 	}
 }
 

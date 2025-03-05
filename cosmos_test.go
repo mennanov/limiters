@@ -27,6 +27,9 @@ func CreateCosmosDBContainer(ctx context.Context, client *azcosmos.Client) error
 	_, err = dbClient.CreateContainer(ctx, azcosmos.ContainerProperties{
 		ID:                testCosmosContainerName,
 		DefaultTimeToLive: &defaultTTL,
+		PartitionKeyDefinition: azcosmos.PartitionKeyDefinition{
+			Paths: []string{`/partitionKey`},
+		},
 	}, &azcosmos.CreateContainerOptions{})
 	return err
 }
