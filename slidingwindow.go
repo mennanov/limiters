@@ -346,8 +346,8 @@ func (s *SlidingWindowDynamoDB) Increment(ctx context.Context, prev, curr time.T
 	return priorCount, currentCount, nil
 }
 
-// SlidingWindowCosmos implements SlidingWindow in Azure Cosmos DB.
-type SlidingWindowCosmos struct {
+// SlidingWindowCosmosDB implements SlidingWindow in Azure Cosmos DB.
+type SlidingWindowCosmosDB struct {
 	client       *azcosmos.ContainerClient
 	partitionKey string
 }
@@ -359,10 +359,10 @@ type cosmosItem struct {
 	TTL          int32  `json:"ttl"`
 }
 
-// NewSlidingWindowCosmos creates a new instance of SlidingWindowCosmos.
+// NewSlidingWindowCosmosDB creates a new instance of SlidingWindowCosmosDB.
 // PartitionKey is the key used to store all the this implementation in Cosmos.
-func NewSlidingWindowCosmos(client *azcosmos.ContainerClient, partitionKey string) *SlidingWindowCosmos {
-	return &SlidingWindowCosmos{
+func NewSlidingWindowCosmosDB(client *azcosmos.ContainerClient, partitionKey string) *SlidingWindowCosmosDB {
+	return &SlidingWindowCosmosDB{
 		client:       client,
 		partitionKey: partitionKey,
 	}
@@ -370,7 +370,7 @@ func NewSlidingWindowCosmos(client *azcosmos.ContainerClient, partitionKey strin
 
 // Increment increments the current window's counter in Cosmos and returns the number of requests in the previous window
 // and the current one.
-func (s *SlidingWindowCosmos) Increment(ctx context.Context, prev, curr time.Time, ttl time.Duration) (int64, int64, error) {
+func (s *SlidingWindowCosmosDB) Increment(ctx context.Context, prev, curr time.Time, ttl time.Duration) (int64, int64, error) {
 	wg := &sync.WaitGroup{}
 	wg.Add(2)
 
@@ -402,7 +402,7 @@ func (s *SlidingWindowCosmos) Increment(ctx context.Context, prev, curr time.Tim
 		tmp.TTL = int32(time.Now().Add(ttl).Unix())
 
 		newValue, err := json.Marshal(tmp)
-		if currentErr != nil {
+		if err != nil {
 			currentErr = errors.Wrap(err, "marshal of cosmos value current failed")
 			return
 		}
@@ -437,8 +437,8 @@ func (s *SlidingWindowCosmos) Increment(ctx context.Context, prev, curr time.Tim
 		}
 
 		var tmp cosmosItem
-		priorErr = json.Unmarshal(resp.Value, &tmp)
-		if currentErr != nil {
+		err = json.Unmarshal(resp.Value, &tmp)
+		if err != nil {
 			priorErr = errors.Wrap(err, "unmarshal of cosmos value prior failed")
 			return
 		}
