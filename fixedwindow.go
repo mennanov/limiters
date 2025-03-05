@@ -2,11 +2,13 @@ package limiters
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/data/azcosmos"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -264,4 +266,51 @@ func (f *FixedWindowDynamoDB) Increment(ctx context.Context, window time.Time, t
 	}
 
 	return int64(count), nil
+}
+
+// FixedWindowCosmosDB implements FixedWindow in CosmosDB.
+type FixedWindowCosmosDB struct {
+	client       *azcosmos.ContainerClient
+	partitionKey string
+}
+
+// NewFixedWindowCosmosDB creates a new instance of FixedWindowCosmosDB.
+// PartitionKey is the key used to store all the this implementation in Cosmos DB.
+func NewFixedWindowCosmosDB(client *azcosmos.ContainerClient, partitionKey string) *FixedWindowCosmosDB {
+	return &FixedWindowCosmosDB{
+		client:       client,
+		partitionKey: partitionKey,
+	}
+}
+
+func (f *FixedWindowCosmosDB) Increment(ctx context.Context, window time.Time, ttl time.Duration) (int64, error) {
+	id := strconv.FormatInt(window.UnixNano(), 10)
+	tmp := cosmosItem{
+		ID:           id,
+		PartitionKey: f.partitionKey,
+	}
+	readResp, err := f.client.ReadItem(ctx, azcosmos.NewPartitionKey().AppendString(f.partitionKey), id, &azcosmos.ItemOptions{})
+	if err == nil {
+		err = json.Unmarshal(readResp.Value, &tmp)
+		if err != nil {
+			return 0, errors.Wrap(err, "unmarshal of cosmos value failed")
+		}
+	}
+	tmp.Count += 1
+	tmp.TTL = int32(time.Now().Add(ttl).Unix())
+
+	newValue, err := json.Marshal(tmp)
+	if err != nil {
+		return 0, errors.Wrap(err, "marshal of cosmos value failed")
+	}
+
+	_, err = f.client.UpsertItem(ctx, azcosmos.NewPartitionKey().AppendString(f.partitionKey), newValue, &azcosmos.ItemOptions{
+		SessionToken: readResp.SessionToken,
+		IfMatchEtag:  &readResp.ETag,
+	})
+	if err != nil {
+		return 0, errors.Wrap(err, "upsert of cosmos value failed")
+	}
+
+	return tmp.Count, nil
 }
