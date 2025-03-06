@@ -26,6 +26,7 @@ func (s *LimitersTestSuite) fixedWindowIncrementers() map[string]l.FixedWindowIn
 		"FixedWindowRedisCluster": l.NewFixedWindowRedis(s.redisClusterClient, uuid.New().String()),
 		"FixedWindowMemcached":    l.NewFixedWindowMemcached(s.memcacheClient, uuid.New().String()),
 		"FixedWindowDynamoDB":     l.NewFixedWindowDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps),
+		"FixedWindowCosmosDB":     l.NewFixedWindowCosmosDB(s.cosmosContainerClient, uuid.New().String()),
 	}
 }
 

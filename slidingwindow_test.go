@@ -26,6 +26,7 @@ func (s *LimitersTestSuite) slidingWindowIncrementers() map[string]l.SlidingWind
 		"SlidingWindowRedisCluster": l.NewSlidingWindowRedis(s.redisClusterClient, uuid.New().String()),
 		"SlidingWindowMemcached":    l.NewSlidingWindowMemcached(s.memcacheClient, uuid.New().String()),
 		"SlidingWindowDynamoDB":     l.NewSlidingWindowDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps),
+		"SlidingWindowCosmosDB":     l.NewSlidingWindowCosmosDB(s.cosmosContainerClient, uuid.New().String()),
 	}
 }
 

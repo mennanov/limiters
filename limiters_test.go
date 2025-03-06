@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/data/azcosmos"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -65,16 +66,18 @@ func (c *fakeClock) reset() {
 
 type LimitersTestSuite struct {
 	suite.Suite
-	etcdClient         *clientv3.Client
-	redisClient        *redis.Client
-	redisClusterClient *redis.ClusterClient
-	consulClient       *api.Client
-	zkConn             *zk.Conn
-	logger             *l.StdLogger
-	dynamodbClient     *dynamodb.Client
-	dynamoDBTableProps l.DynamoDBTableProperties
-	memcacheClient     *memcache.Client
-	pgDb               *sql.DB
+	etcdClient            *clientv3.Client
+	redisClient           *redis.Client
+	redisClusterClient    *redis.ClusterClient
+	consulClient          *api.Client
+	zkConn                *zk.Conn
+	logger                *l.StdLogger
+	dynamodbClient        *dynamodb.Client
+	dynamoDBTableProps    l.DynamoDBTableProperties
+	memcacheClient        *memcache.Client
+	pgDb                  *sql.DB
+	cosmosClient          *azcosmos.Client
+	cosmosContainerClient *azcosmos.ContainerClient
 }
 
 func (s *LimitersTestSuite) SetupSuite() {
@@ -123,6 +126,15 @@ func (s *LimitersTestSuite) SetupSuite() {
 	s.pgDb, err = sql.Open("postgres", os.Getenv("POSTGRES_URL"))
 	s.Require().NoError(err)
 	s.Require().NoError(s.pgDb.Ping())
+
+	// https://learn.microsoft.com/en-us/azure/cosmos-db/emulator#authentication
+	connString := fmt.Sprintf("AccountEndpoint=http://%s/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==;", os.Getenv("COSMOS_ADDR"))
+	s.cosmosClient, err = azcosmos.NewClientFromConnectionString(connString, &azcosmos.ClientOptions{})
+	s.Require().NoError(err)
+	s.Require().NoError(CreateCosmosDBContainer(context.Background(), s.cosmosClient))
+
+	s.cosmosContainerClient, err = s.cosmosClient.NewContainer(testCosmosDBName, testCosmosContainerName)
+	s.Require().NoError(err)
 }
 
 func (s *LimitersTestSuite) TearDownSuite() {
@@ -132,6 +144,7 @@ func (s *LimitersTestSuite) TearDownSuite() {
 	s.Assert().NoError(DeleteTestDynamoDBTable(context.Background(), s.dynamodbClient))
 	s.Assert().NoError(s.memcacheClient.Close())
 	s.Assert().NoError(s.pgDb.Close())
+	s.Assert().NoError(DeleteCosmosDBContainer(context.Background(), s.cosmosClient))
 }
 
 func TestLimitersTestSuite(t *testing.T) {
