@@ -2,11 +2,15 @@ package limiters
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-sdk-for-go/sdk/data/azcosmos"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -264,4 +268,64 @@ func (f *FixedWindowDynamoDB) Increment(ctx context.Context, window time.Time, t
 	}
 
 	return int64(count), nil
+}
+
+// FixedWindowCosmosDB implements FixedWindow in CosmosDB.
+type FixedWindowCosmosDB struct {
+	client       *azcosmos.ContainerClient
+	partitionKey string
+}
+
+// NewFixedWindowCosmosDB creates a new instance of FixedWindowCosmosDB.
+// PartitionKey is the key used for partitioning data into multiple partitions.
+func NewFixedWindowCosmosDB(client *azcosmos.ContainerClient, partitionKey string) *FixedWindowCosmosDB {
+	return &FixedWindowCosmosDB{
+		client:       client,
+		partitionKey: partitionKey,
+	}
+}
+
+func (f *FixedWindowCosmosDB) Increment(ctx context.Context, window time.Time, ttl time.Duration) (int64, error) {
+	id := strconv.FormatInt(window.UnixNano(), 10)
+	tmp := cosmosItem{
+		ID:           id,
+		PartitionKey: f.partitionKey,
+		Count:        1,
+		TTL:          int32(ttl),
+	}
+
+	ops := azcosmos.PatchOperations{}
+	ops.AppendIncrement(`/Count`, 1)
+
+	patchResp, err := f.client.PatchItem(ctx, azcosmos.NewPartitionKey().AppendString(f.partitionKey), id, ops, &azcosmos.ItemOptions{
+		EnableContentResponseOnWrite: true,
+	})
+	if err == nil {
+		// value exists and was updated
+		err = json.Unmarshal(patchResp.Value, &tmp)
+		if err != nil {
+			return 0, errors.Wrap(err, "unmarshal of cosmos value failed")
+		}
+		return tmp.Count, nil
+	}
+
+	var respErr *azcore.ResponseError
+	if !errors.As(err, &respErr) || respErr.StatusCode != http.StatusNotFound {
+		return 0, errors.Wrap(err, `patch of cosmos value failed`)
+	}
+
+	newValue, err := json.Marshal(tmp)
+	if err != nil {
+		return 0, errors.Wrap(err, "marshal of cosmos value failed")
+	}
+
+	_, err = f.client.CreateItem(ctx, azcosmos.NewPartitionKey().AppendString(f.partitionKey), newValue, &azcosmos.ItemOptions{
+		SessionToken: patchResp.SessionToken,
+		IfMatchEtag:  &patchResp.ETag,
+	})
+	if err != nil {
+		return 0, errors.Wrap(err, "upsert of cosmos value failed")
+	}
+
+	return tmp.Count, nil
 }

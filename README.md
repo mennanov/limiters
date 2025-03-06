@@ -35,6 +35,7 @@ Most common implementations are already provided.
     - redis
     - memcached
     - dynamodb
+    - cosmos db
 
     Simple and resources efficient algorithm that does not need a lock.  
     Precision may be adjusted by the size of the window.  
@@ -45,6 +46,7 @@ Most common implementations are already provided.
     - redis
     - memcached
     - dynamodb
+    - cosmos db
 
     Smoothes out the bursts around the boundary between 2 adjacent windows.  
     Needs as twice more memory as the `Fixed Window` algorithm (2 windows instead of 1 at a time).  
@@ -98,7 +100,7 @@ For something close to a real world example see the IP address based gRPC global
 
 The use of DynamoDB requires the creation of a DynamoDB Table prior to use. An existing table can be used or a new one can be created. Depending on the limiter backend:
 
-* Partion Key
+* Partition Key
   - String
   - Required for all Backends
 * Sort Key
@@ -115,6 +117,14 @@ The use of DynamoDB requires the creation of a DynamoDB Table prior to use. An e
     - TokenBucket
 
 All DynamoDB backends accept a `DynamoDBTableProperties` struct as a paramater. This can be manually created or use the `LoadDynamoDBTableProperties` with the table name. When using `LoadDynamoDBTableProperties`, the table description is fetched from AWS and verified that the table can be used for Limiter backends. Results of `LoadDynamoDBTableProperties` are cached.
+
+## Azure Cosmos DB for NoSQL
+
+The use of Cosmos DB requires the creation of a database and container prior to use.
+
+The container must have a default TTL set, otherwise TTL [will not take effect](https://learn.microsoft.com/en-us/azure/cosmos-db/nosql/time-to-live#time-to-live-configurations).
+
+The partition key should be `/partitionKey`.
 
 ## Distributed locks
 
