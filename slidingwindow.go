@@ -389,17 +389,32 @@ func (s *SlidingWindowCosmosDB) Increment(ctx context.Context, prev, curr time.T
 		tmp := cosmosItem{
 			ID:           id,
 			PartitionKey: s.partitionKey,
+			Count:        1,
+			TTL:          int32(ttl),
 		}
-		readResp, err := s.client.ReadItem(ctx, azcosmos.NewPartitionKey().AppendString(s.partitionKey), id, &azcosmos.ItemOptions{})
+
+		ops := azcosmos.PatchOperations{}
+		ops.AppendIncrement(`/Count`, 1)
+
+		patchResp, err := s.client.PatchItem(ctx, azcosmos.NewPartitionKey().AppendString(s.partitionKey), id, ops, &azcosmos.ItemOptions{
+			EnableContentResponseOnWrite: true,
+		})
 		if err == nil {
-			err = json.Unmarshal(readResp.Value, &tmp)
+			// value exists and was updated
+			err = json.Unmarshal(patchResp.Value, &tmp)
 			if err != nil {
 				currentErr = errors.Wrap(err, "unmarshal of cosmos value current failed")
 				return
 			}
+			currentCount = tmp.Count
+			return
 		}
-		tmp.Count += 1
-		tmp.TTL = int32(time.Now().Add(ttl).Unix())
+
+		var respErr *azcore.ResponseError
+		if !errors.As(err, &respErr) || respErr.StatusCode != http.StatusNotFound {
+			currentErr = errors.Wrap(err, `patch of cosmos value current failed`)
+			return
+		}
 
 		newValue, err := json.Marshal(tmp)
 		if err != nil {
@@ -407,9 +422,9 @@ func (s *SlidingWindowCosmosDB) Increment(ctx context.Context, prev, curr time.T
 			return
 		}
 
-		_, err = s.client.UpsertItem(ctx, azcosmos.NewPartitionKey().AppendString(s.partitionKey), newValue, &azcosmos.ItemOptions{
-			SessionToken: readResp.SessionToken,
-			IfMatchEtag:  &readResp.ETag,
+		_, err = s.client.CreateItem(ctx, azcosmos.NewPartitionKey().AppendString(s.partitionKey), newValue, &azcosmos.ItemOptions{
+			SessionToken: patchResp.SessionToken,
+			IfMatchEtag:  &patchResp.ETag,
 		})
 		if err != nil {
 			currentErr = errors.Wrap(err, "upsert of cosmos value current failed")

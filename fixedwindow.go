@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/data/azcosmos"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -288,25 +290,38 @@ func (f *FixedWindowCosmosDB) Increment(ctx context.Context, window time.Time, t
 	tmp := cosmosItem{
 		ID:           id,
 		PartitionKey: f.partitionKey,
+		Count:        1,
+		TTL:          int32(ttl),
 	}
-	readResp, err := f.client.ReadItem(ctx, azcosmos.NewPartitionKey().AppendString(f.partitionKey), id, &azcosmos.ItemOptions{})
+
+	ops := azcosmos.PatchOperations{}
+	ops.AppendIncrement(`/Count`, 1)
+
+	patchResp, err := f.client.PatchItem(ctx, azcosmos.NewPartitionKey().AppendString(f.partitionKey), id, ops, &azcosmos.ItemOptions{
+		EnableContentResponseOnWrite: true,
+	})
 	if err == nil {
-		err = json.Unmarshal(readResp.Value, &tmp)
+		// value exists and was updated
+		err = json.Unmarshal(patchResp.Value, &tmp)
 		if err != nil {
 			return 0, errors.Wrap(err, "unmarshal of cosmos value failed")
 		}
+		return tmp.Count, nil
 	}
-	tmp.Count += 1
-	tmp.TTL = int32(time.Now().Add(ttl).Unix())
+
+	var respErr *azcore.ResponseError
+	if !errors.As(err, &respErr) || respErr.StatusCode != http.StatusNotFound {
+		return 0, errors.Wrap(err, `patch of cosmos value failed`)
+	}
 
 	newValue, err := json.Marshal(tmp)
 	if err != nil {
 		return 0, errors.Wrap(err, "marshal of cosmos value failed")
 	}
 
-	_, err = f.client.UpsertItem(ctx, azcosmos.NewPartitionKey().AppendString(f.partitionKey), newValue, &azcosmos.ItemOptions{
-		SessionToken: readResp.SessionToken,
-		IfMatchEtag:  &readResp.ETag,
+	_, err = f.client.CreateItem(ctx, azcosmos.NewPartitionKey().AppendString(f.partitionKey), newValue, &azcosmos.ItemOptions{
+		SessionToken: patchResp.SessionToken,
+		IfMatchEtag:  &patchResp.ETag,
 	})
 	if err != nil {
 		return 0, errors.Wrap(err, "upsert of cosmos value failed")
