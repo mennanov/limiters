@@ -352,13 +352,6 @@ type SlidingWindowCosmosDB struct {
 	partitionKey string
 }
 
-type cosmosItem struct {
-	Count        int64  `json:"Count"`
-	PartitionKey string `json:"partitionKey"`
-	ID           string `json:"id"`
-	TTL          int32  `json:"ttl"`
-}
-
 // NewSlidingWindowCosmosDB creates a new instance of SlidingWindowCosmosDB.
 // PartitionKey is the key used to store all the this implementation in Cosmos.
 func NewSlidingWindowCosmosDB(client *azcosmos.ContainerClient, partitionKey string) *SlidingWindowCosmosDB {
