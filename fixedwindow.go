@@ -275,7 +275,7 @@ type FixedWindowCosmosDB struct {
 }
 
 // NewFixedWindowCosmosDB creates a new instance of FixedWindowCosmosDB.
-// PartitionKey is the key used to store all the this implementation in Cosmos DB.
+// PartitionKey is the key used for partitioning data into multiple partitions.
 func NewFixedWindowCosmosDB(client *azcosmos.ContainerClient, partitionKey string) *FixedWindowCosmosDB {
 	return &FixedWindowCosmosDB{
 		client:       client,
