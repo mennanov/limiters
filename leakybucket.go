@@ -4,12 +4,16 @@ import (
 	"bytes"
 	"context"
 	"encoding/gob"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"reflect"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-sdk-for-go/sdk/data/azcosmos"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -661,4 +665,112 @@ func (t *LeakyBucketDynamoDB) loadStateFromDynamoDB(resp *dynamodb.GetItemOutput
 	}
 
 	return state, nil
+}
+
+// CosmosDBLeakyBucketItem represents a document in CosmosDB for LeakyBucket
+type CosmosDBLeakyBucketItem struct {
+	ID           string           `json:"id"`
+	PartitionKey string           `json:"partitionKey"`
+	State        LeakyBucketState `json:"state"`
+	Version      int64            `json:"version"`
+	TTL          int64            `json:"ttl"`
+}
+
+// LeakyBucketCosmosDB is a CosmosDB implementation of a LeakyBucketStateBackend.
+type LeakyBucketCosmosDB struct {
+	client        *azcosmos.ContainerClient
+	partitionKey  string
+	id            string
+	ttl           time.Duration
+	raceCheck     bool
+	latestVersion int64
+}
+
+// NewLeakyBucketCosmosDB creates a new LeakyBucketCosmosDB instance.
+// PartitionKey is the key used to store all the implementation in CosmosDB.
+// TTL is the TTL of the stored item.
+//
+// If raceCheck is true and the item in CosmosDB is modified in between State() and SetState() calls then
+// ErrRaceCondition is returned.
+func NewLeakyBucketCosmosDB(client *azcosmos.ContainerClient, partitionKey string, ttl time.Duration, raceCheck bool) *LeakyBucketCosmosDB {
+	return &LeakyBucketCosmosDB{
+		client:       client,
+		partitionKey: partitionKey,
+		id:           "leaky-bucket-" + partitionKey,
+		ttl:          ttl,
+		raceCheck:    raceCheck,
+	}
+}
+
+func (t *LeakyBucketCosmosDB) State(ctx context.Context) (LeakyBucketState, error) {
+	var item CosmosDBLeakyBucketItem
+	resp, err := t.client.ReadItem(ctx, azcosmos.NewPartitionKey().AppendString(t.partitionKey), t.id, &azcosmos.ItemOptions{})
+	if err != nil {
+		var respErr *azcore.ResponseError
+		if errors.As(err, &respErr) && respErr.StatusCode == http.StatusNotFound {
+			return LeakyBucketState{}, nil
+		}
+		return LeakyBucketState{}, err
+	}
+
+	err = json.Unmarshal(resp.Value, &item)
+	if err != nil {
+		return LeakyBucketState{}, errors.Wrap(err, "failed to decode state from Cosmos DB")
+	}
+
+	if time.Now().Unix() > item.TTL {
+		return LeakyBucketState{}, nil
+	}
+
+	if t.raceCheck {
+		t.latestVersion = item.Version
+	}
+
+	return item.State, nil
+}
+
+func (t *LeakyBucketCosmosDB) SetState(ctx context.Context, state LeakyBucketState) error {
+	var err error
+	done := make(chan struct{}, 1)
+
+	item := CosmosDBLeakyBucketItem{
+		ID:           t.id,
+		PartitionKey: t.partitionKey,
+		State:        state,
+		Version:      t.latestVersion + 1,
+		TTL:          time.Now().Add(t.ttl).Unix(),
+	}
+
+	value, err := json.Marshal(item)
+	if err != nil {
+		return errors.Wrap(err, "failed to encode state to JSON")
+	}
+
+	go func() {
+		defer close(done)
+		_, err = t.client.UpsertItem(ctx, azcosmos.NewPartitionKey().AppendString(t.partitionKey), value, &azcosmos.ItemOptions{})
+	}()
+
+	select {
+	case <-done:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	if err != nil {
+		var respErr *azcore.ResponseError
+		if errors.As(err, &respErr) && respErr.StatusCode == http.StatusConflict && t.raceCheck {
+			return ErrRaceCondition
+		}
+		return errors.Wrap(err, "failed to save keys to Cosmos DB")
+	}
+
+	return nil
+}
+
+func (t *LeakyBucketCosmosDB) Reset(ctx context.Context) error {
+	state := LeakyBucketState{
+		Last: 0,
+	}
+	return t.SetState(ctx, state)
 }
