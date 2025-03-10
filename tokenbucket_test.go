@@ -2,12 +2,14 @@ package limiters_test
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	l "github.com/mennanov/limiters"
+	"github.com/redis/go-redis/v9"
 )
 
 var tokenBucketUniformTestCases = []struct {
@@ -231,6 +233,46 @@ func (s *LimitersTestSuite) TestTokenBucketRefill() {
 			}
 		})
 	}
+}
+
+// setTokenBucketStateInOldFormat is a test utility method for writing state in the old format to Redis
+func setTokenBucketStateInOldFormat(ctx context.Context, cli *redis.Client, prefix string, state l.TokenBucketState, ttl time.Duration) error {
+	_, err := cli.TxPipelined(ctx, func(pipeliner redis.Pipeliner) error {
+		if err := pipeliner.Set(ctx, fmt.Sprintf("{%s}last", prefix), state.Last, ttl).Err(); err != nil {
+			return err
+		}
+		if err := pipeliner.Set(ctx, fmt.Sprintf("{%s}available", prefix), state.Available, ttl).Err(); err != nil {
+			return err
+		}
+		return nil
+	})
+	return err
+}
+
+// TestTokenBucketRedisBackwardCompatibility tests that the new State method can read data written in the old format.
+func (s *LimitersTestSuite) TestTokenBucketRedisBackwardCompatibility() {
+	// Create a new TokenBucketRedis instance
+	prefix := uuid.New().String()
+	backend := l.NewTokenBucketRedis(s.redisClient, prefix, time.Second, false)
+
+	// Write state using old format
+	ctx := context.Background()
+	expectedState := l.TokenBucketState{
+		Last:      12345,
+		Available: 67890,
+	}
+
+	// Write directly to Redis using old format
+	err := setTokenBucketStateInOldFormat(ctx, s.redisClient, prefix, expectedState, time.Second)
+	s.Require().NoError(err, "Failed to set state using old format")
+
+	// Read state using new format (State)
+	actualState, err := backend.State(ctx)
+	s.Require().NoError(err, "Failed to get state using new format")
+
+	// Verify the state is correctly read
+	s.Equal(expectedState.Last, actualState.Last, "Last values should match")
+	s.Equal(expectedState.Available, actualState.Available, "Available values should match")
 }
 
 func BenchmarkTokenBuckets(b *testing.B) {

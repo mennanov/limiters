@@ -2,14 +2,15 @@ package limiters_test
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/require"
-
 	l "github.com/mennanov/limiters"
+	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/require"
 )
 
 // leakyBuckets returns all the possible leakyBuckets combinations.
@@ -198,4 +199,39 @@ func BenchmarkLeakyBuckets(b *testing.B) {
 		})
 	}
 	s.TearDownSuite()
+}
+
+// setStateInOldFormat is a test utility method for writing state in the old format to Redis
+func setStateInOldFormat(ctx context.Context, cli *redis.Client, prefix string, state l.LeakyBucketState, ttl time.Duration) error {
+	_, err := cli.TxPipelined(ctx, func(pipeliner redis.Pipeliner) error {
+		if err := pipeliner.Set(ctx, fmt.Sprintf("{%s}last", prefix), state.Last, ttl).Err(); err != nil {
+			return err
+		}
+		return nil
+	})
+	return err
+}
+
+// TestLeakyBucketRedisBackwardCompatibility tests that the new State method can read data written in the old format.
+func (s *LimitersTestSuite) TestLeakyBucketRedisBackwardCompatibility() {
+	// Create a new LeakyBucketRedis instance
+	prefix := uuid.New().String()
+	backend := l.NewLeakyBucketRedis(s.redisClient, prefix, time.Second, false)
+
+	// Write state using old format
+	ctx := context.Background()
+	expectedState := l.LeakyBucketState{
+		Last: 12345,
+	}
+
+	// Write directly to Redis using old format
+	err := setStateInOldFormat(ctx, s.redisClient, prefix, expectedState, time.Second)
+	s.Require().NoError(err, "Failed to set state using old format")
+
+	// Read state using new format (State)
+	actualState, err := backend.State(ctx)
+	s.Require().NoError(err, "Failed to get state using new format")
+
+	// Verify the state is correctly read
+	s.Equal(expectedState.Last, actualState.Last, "Last values should match")
 }

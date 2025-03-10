@@ -4,6 +4,7 @@ linters:
     - cyclop
     - depguard
     - dupl
+    - dupword
     - err113
     - errorlint
     - exhaustruct
