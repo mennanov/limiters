@@ -92,6 +92,8 @@ func (s *LimitersTestSuite) tokenBucketBackends() map[string]l.TokenBucketStateB
 		"TokenBucketMemcachedWithRaceCheck":    l.NewTokenBucketMemcached(s.memcacheClient, uuid.New().String(), time.Second, true),
 		"TokenBucketDynamoDBNoRaceCheck":       l.NewTokenBucketDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps, time.Second, false),
 		"TokenBucketDynamoDBWithRaceCheck":     l.NewTokenBucketDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps, time.Second, true),
+		"TokenBucketCosmosDBNoRaceCheck":       l.NewTokenBucketCosmosDB(s.cosmosContainerClient, uuid.New().String(), time.Second, false),
+		"TokenBucketCosmosDBWithRaceCheck":     l.NewTokenBucketCosmosDB(s.cosmosContainerClient, uuid.New().String(), time.Second, true),
 	}
 }
 

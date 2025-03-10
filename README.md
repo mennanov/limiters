@@ -14,6 +14,7 @@ Most common implementations are already provided.
     - memcached
     - etcd
     - dynamodb
+    - cosmos db
 
     Allows requests at a certain input rate with possible bursts configured by the capacity parameter.  
     The output rate equals to the input rate.  
@@ -25,6 +26,7 @@ Most common implementations are already provided.
     - memcached
     - etcd
     - dynamodb
+    - cosmos db
 
     Puts requests in a FIFO queue to be processed at a constant rate.  
     There are no restrictions on the input rate except for the capacity of the queue.  

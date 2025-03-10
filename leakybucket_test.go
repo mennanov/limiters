@@ -36,6 +36,8 @@ func (s *LimitersTestSuite) leakyBucketBackends() map[string]l.LeakyBucketStateB
 		"LeakyBucketMemcachedWithRaceCheck":    l.NewLeakyBucketMemcached(s.memcacheClient, uuid.New().String(), time.Second, true),
 		"LeakyBucketDynamoDBNoRaceCheck":       l.NewLeakyBucketDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps, time.Second, false),
 		"LeakyBucketDynamoDBWithRaceCheck":     l.NewLeakyBucketDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps, time.Second, true),
+		"LeakyBucketCosmosDBNoRaceCheck":       l.NewLeakyBucketCosmosDB(s.cosmosContainerClient, uuid.New().String(), time.Second, false),
+		"LeakyBucketCosmosDBWithRaceCheck":     l.NewLeakyBucketCosmosDB(s.cosmosContainerClient, uuid.New().String(), time.Second, true),
 	}
 }
 
