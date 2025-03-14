@@ -3,7 +3,9 @@ package limiters
 import (
 	"context"
 	"database/sql"
-	"github.com/alessandro-c/gomemcached-lock"
+	"time"
+
+	lock "github.com/alessandro-c/gomemcached-lock"
 	"github.com/alessandro-c/gomemcached-lock/adapters/gomemcache"
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/cenkalti/backoff/v3"
@@ -15,7 +17,6 @@ import (
 	"github.com/samuel/go-zookeeper/zk"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/client/v3/concurrency"
-	"time"
 )
 
 // DistLocker is a context aware distributed locker (interface is similar to sync.Locker).

@@ -1,4 +1,4 @@
-all: lint test benchmark
+all: goimports lint test benchmark
 
 docker-compose-up:
 	docker compose up -d
@@ -12,3 +12,7 @@ benchmark: docker-compose-up
 lint:
 	@which golangci-lint 2>&1 > /dev/null || curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.64.7
 	golangci-lint run ./...
+
+goimports:
+	@which goimports 2>&1 > /dev/null || go install golang.org/x/tools/cmd/goimports@latest
+	goimports -w .
