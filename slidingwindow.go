@@ -145,9 +145,9 @@ func (s *SlidingWindowRedis) Increment(ctx context.Context, prev, curr time.Time
 	var prevCount int64
 	select {
 	case <-done:
-		if err == redis.TxFailedErr {
+		if errors.Is(err, redis.TxFailedErr) {
 			return 0, 0, errors.Wrap(err, "redis transaction failed")
-		} else if err == redis.Nil {
+		} else if errors.Is(err, redis.Nil) {
 			prevCount = 0
 		} else if err != nil {
 			return 0, 0, errors.Wrap(err, "unexpected error from redis")

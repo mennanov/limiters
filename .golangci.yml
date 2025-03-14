@@ -5,8 +5,6 @@ linters:
     - depguard
     - dupl
     - dupword
-    - err113
-    - errorlint
     - exhaustruct
     - forcetypeassert
     - funlen

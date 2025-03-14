@@ -335,7 +335,7 @@ func (t *TokenBucketEtcd) SetState(ctx context.Context, state TokenBucketState) 
 		return t.save(ctx, state)
 	}
 	// Send the KeepAlive request to extend the existing lease.
-	if _, err := t.cli.KeepAliveOnce(ctx, t.leaseID); err == rpctypes.ErrLeaseNotFound {
+	if _, err := t.cli.KeepAliveOnce(ctx, t.leaseID); errors.Is(err, rpctypes.ErrLeaseNotFound) {
 		// Create a new lease since the current one has expired.
 		if err = t.createLease(ctx); err != nil {
 			return err
@@ -440,7 +440,7 @@ func (t *TokenBucketRedis) oldState(ctx context.Context) (TokenBucketState, erro
 			break
 		}
 	}
-	if nilAny || err == redis.Nil {
+	if nilAny || errors.Is(err, redis.Nil) {
 		// Keys don't exist, return the initial state.
 		return TokenBucketState{}, nil
 	}
@@ -481,12 +481,12 @@ func (t *TokenBucketRedis) State(ctx context.Context) (TokenBucketState, error) 
 		defer close(done)
 		key := redisKey(t.prefix, "state")
 		value, err := t.cli.Get(ctx, key).Result()
-		if err != nil && err != redis.Nil {
+		if err != nil && !errors.Is(err, redis.Nil) {
 			errCh <- err
 			return
 		}
 
-		if err == redis.Nil {
+		if errors.Is(err, redis.Nil) {
 			state, err = t.oldState(ctx)
 			errCh <- err
 			return
