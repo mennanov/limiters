@@ -355,6 +355,8 @@ func (t *TokenBucketEtcd) Reset(ctx context.Context) error {
 	return t.SetState(ctx, state)
 }
 
+// Deprecated: These legacy keys will be removed in a future version.
+// The state is now stored in a single JSON document under the "state" key.
 const (
 	redisKeyTBAvailable = "available"
 	redisKeyTBLast      = "last"
@@ -398,8 +400,8 @@ func NewTokenBucketRedis(cli redis.UniversalClient, prefix string, ttl time.Dura
 	return &TokenBucketRedis{cli: cli, prefix: prefix, ttl: ttl, raceCheck: raceCheck}
 }
 
-// State gets the bucket's state from Redis.
-func (t *TokenBucketRedis) State(ctx context.Context) (TokenBucketState, error) {
+// Deprecated: Legacy format support will be removed in a future version.
+func (t *TokenBucketRedis) oldState(ctx context.Context) (TokenBucketState, error) {
 	var values []interface{}
 	var err error
 	done := make(chan struct{}, 1)
@@ -463,58 +465,126 @@ func (t *TokenBucketRedis) State(ctx context.Context) (TokenBucketState, error) 
 	}, nil
 }
 
-// SetState updates the state in Redis.
-func (t *TokenBucketRedis) SetState(ctx context.Context, state TokenBucketState) error {
+// State gets the bucket's state from Redis.
+func (t *TokenBucketRedis) State(ctx context.Context) (TokenBucketState, error) {
 	var err error
 	done := make(chan struct{}, 1)
+	errCh := make(chan error, 1)
+	var state TokenBucketState
+
+	if t.raceCheck {
+		// reset in a case of returning an empty TokenBucketState
+		t.lastVersion = 0
+	}
+
 	go func() {
 		defer close(done)
-		if !t.raceCheck {
-			_, err = t.cli.TxPipelined(ctx, func(pipeliner redis.Pipeliner) error {
-				if err = pipeliner.Set(ctx, redisKey(t.prefix, redisKeyTBLast), state.Last, t.ttl).Err(); err != nil {
-					return err
-				}
-				return pipeliner.Set(ctx, redisKey(t.prefix, redisKeyTBAvailable), state.Available, t.ttl).Err()
-			})
+		key := redisKey(t.prefix, "state")
+		value, err := t.cli.Get(ctx, key).Result()
+		if err != nil && err != redis.Nil {
+			errCh <- err
 			return
 		}
-		var result interface{}
-		// TODO: use EVALSHA.
-		result, err = t.cli.Eval(ctx, `
-	local version = tonumber(redis.call('get', KEYS[1])) or 0
-	if version > tonumber(ARGV[1]) then
-		return 'RACE_CONDITION'
-	end
-	return {
-		redis.call('incr', KEYS[1]),
-		redis.call('pexpire', KEYS[1], ARGV[4]),
-		redis.call('set', KEYS[2], ARGV[2], 'PX', ARGV[4]),
-		redis.call('set', KEYS[3], ARGV[3], 'PX', ARGV[4]),
-	}
-	`, []string{
-			redisKey(t.prefix, redisKeyTBVersion),
-			redisKey(t.prefix, redisKeyTBLast),
-			redisKey(t.prefix, redisKeyTBAvailable),
-		},
-			t.lastVersion,
-			state.Last,
-			state.Available,
-			// TTL in milliseconds.
-			int64(t.ttl/time.Millisecond)).Result()
 
-		if err == nil {
-			err = checkResponseFromRedis(result, []interface{}{t.lastVersion + 1, int64(1), "OK", "OK"}, []interface{}{int64(1), int64(1), "OK", "OK"})
+		if err == redis.Nil {
+			state, err = t.oldState(ctx)
+			errCh <- err
+			return
 		}
+
+		// Try new format
+		var item struct {
+			State   TokenBucketState `json:"state"`
+			Version int64            `json:"version"`
+		}
+		if err = json.Unmarshal([]byte(value), &item); err != nil {
+			errCh <- err
+			return
+		}
+
+		state = item.State
+		if t.raceCheck {
+			t.lastVersion = item.Version
+		}
+		errCh <- nil
 	}()
 
 	select {
 	case <-done:
+		err = <-errCh
+	case <-ctx.Done():
+		return TokenBucketState{}, ctx.Err()
+	}
 
+	if err != nil {
+		return TokenBucketState{}, errors.Wrap(err, "failed to get state from redis")
+	}
+
+	return state, nil
+}
+
+// SetState updates the state in Redis.
+func (t *TokenBucketRedis) SetState(ctx context.Context, state TokenBucketState) error {
+	var err error
+	done := make(chan struct{}, 1)
+	errCh := make(chan error, 1)
+
+	go func() {
+		defer close(done)
+		key := redisKey(t.prefix, "state")
+		item := struct {
+			State   TokenBucketState `json:"state"`
+			Version int64            `json:"version"`
+		}{
+			State:   state,
+			Version: t.lastVersion + 1,
+		}
+
+		value, err := json.Marshal(item)
+		if err != nil {
+			errCh <- err
+			return
+		}
+
+		if !t.raceCheck {
+			errCh <- t.cli.Set(ctx, key, value, t.ttl).Err()
+			return
+		}
+
+		script := `
+			local current = redis.call('get', KEYS[1])
+			if current then
+				local data = cjson.decode(current)
+				if data.version > tonumber(ARGV[2]) then
+					return 'RACE_CONDITION'
+				end
+			end
+			redis.call('set', KEYS[1], ARGV[1], 'PX', ARGV[3])
+			return 'OK'
+		`
+		result, err := t.cli.Eval(ctx, script, []string{key}, value, t.lastVersion, int64(t.ttl/time.Millisecond)).Result()
+		if err != nil {
+			errCh <- err
+			return
+		}
+		if result == "RACE_CONDITION" {
+			errCh <- ErrRaceCondition
+			return
+		}
+		errCh <- nil
+	}()
+
+	select {
+	case <-done:
+		err = <-errCh
 	case <-ctx.Done():
 		return ctx.Err()
 	}
 
-	return errors.Wrap(err, "failed to save keys to redis")
+	if err != nil {
+		return errors.Wrap(err, "failed to save state to redis")
+	}
+	return nil
 }
 
 // Reset resets the state in Redis.

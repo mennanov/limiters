@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"reflect"
 	"strconv"
 	"sync"
 	"time"
@@ -291,6 +290,8 @@ func (l *LeakyBucketEtcd) Reset(ctx context.Context) error {
 	return l.SetState(ctx, state)
 }
 
+// Deprecated: These legacy keys will be removed in a future version.
+// The state is now stored in a single JSON document under the "state" key.
 const (
 	redisKeyLBLast    = "last"
 	redisKeyLBVersion = "version"
@@ -315,8 +316,8 @@ func NewLeakyBucketRedis(cli redis.UniversalClient, prefix string, ttl time.Dura
 	return &LeakyBucketRedis{cli: cli, prefix: prefix, ttl: ttl, raceCheck: raceCheck}
 }
 
-// State gets the bucket's state from Redis.
-func (t *LeakyBucketRedis) State(ctx context.Context) (LeakyBucketState, error) {
+// Deprecated: Legacy format support will be removed in a future version.
+func (t *LeakyBucketRedis) oldState(ctx context.Context) (LeakyBucketState, error) {
 	var values []interface{}
 	var err error
 	done := make(chan struct{}, 1)
@@ -368,62 +369,126 @@ func (t *LeakyBucketRedis) State(ctx context.Context) (LeakyBucketState, error) 
 	}, nil
 }
 
-func checkResponseFromRedis(response interface{}, expected interface{}, expectedIfPreviousVersionExpired interface{}) error {
-	if s, sok := response.(string); sok && s == "RACE_CONDITION" {
-		return ErrRaceCondition
-	}
-	if !reflect.DeepEqual(response, expected) && !reflect.DeepEqual(response, expectedIfPreviousVersionExpired) {
-		return errors.Errorf("got %+v from redis, expected %+v or %+v", response, expected, expectedIfPreviousVersionExpired)
-	}
-
-	return nil
-}
-
-// SetState updates the state in Redis.
-// The provided fencing token is checked on the Redis side before saving the keys.
-func (t *LeakyBucketRedis) SetState(ctx context.Context, state LeakyBucketState) error {
+// State gets the bucket's state from Redis.
+func (t *LeakyBucketRedis) State(ctx context.Context) (LeakyBucketState, error) {
 	var err error
 	done := make(chan struct{}, 1)
+	errCh := make(chan error, 1)
+	var state LeakyBucketState
+
+	if t.raceCheck {
+		// reset in a case of returning an empty LeakyBucketState
+		t.lastVersion = 0
+	}
+
 	go func() {
 		defer close(done)
-		if !t.raceCheck {
-			err = t.cli.Set(ctx, redisKey(t.prefix, redisKeyLBLast), state.Last, t.ttl).Err()
+		key := redisKey(t.prefix, "state")
+		value, err := t.cli.Get(ctx, key).Result()
+		if err != nil && err != redis.Nil {
+			errCh <- err
 			return
 		}
-		var result interface{}
-		// TODO: make use of EVALSHA.
-		result, err = t.cli.Eval(ctx, `
-	local version = tonumber(redis.call('get', KEYS[1])) or 0
-	if version > tonumber(ARGV[1]) then
-		return 'RACE_CONDITION'
-	end
-	return {
-		redis.call('incr', KEYS[1]),
-		redis.call('pexpire', KEYS[1], ARGV[3]),
-		redis.call('set', KEYS[2], ARGV[2], 'PX', ARGV[3]),
-	}
-	`, []string{
-			redisKey(t.prefix, redisKeyLBVersion),
-			redisKey(t.prefix, redisKeyLBLast),
-		},
-			t.lastVersion,
-			state.Last,
-			// TTL in milliseconds.
-			int64(t.ttl/time.Microsecond)).Result()
 
-		if err == nil {
-			err = checkResponseFromRedis(result, []interface{}{t.lastVersion + 1, int64(1), "OK"}, []interface{}{int64(1), int64(1), "OK"})
+		if err == redis.Nil {
+			state, err = t.oldState(ctx)
+			errCh <- err
+			return
 		}
+
+		// Try new format
+		var item struct {
+			State   LeakyBucketState `json:"state"`
+			Version int64            `json:"version"`
+		}
+		if err = json.Unmarshal([]byte(value), &item); err != nil {
+			errCh <- err
+			return
+		}
+
+		state = item.State
+		if t.raceCheck {
+			t.lastVersion = item.Version
+		}
+		errCh <- nil
 	}()
 
 	select {
 	case <-done:
+		err = <-errCh
+	case <-ctx.Done():
+		return LeakyBucketState{}, ctx.Err()
+	}
 
+	if err != nil {
+		return LeakyBucketState{}, errors.Wrap(err, "failed to get state from redis")
+	}
+
+	return state, nil
+}
+
+// SetState updates the state in Redis.
+func (t *LeakyBucketRedis) SetState(ctx context.Context, state LeakyBucketState) error {
+	var err error
+	done := make(chan struct{}, 1)
+	errCh := make(chan error, 1)
+
+	go func() {
+		defer close(done)
+		key := redisKey(t.prefix, "state")
+		item := struct {
+			State   LeakyBucketState `json:"state"`
+			Version int64            `json:"version"`
+		}{
+			State:   state,
+			Version: t.lastVersion + 1,
+		}
+
+		value, err := json.Marshal(item)
+		if err != nil {
+			errCh <- err
+			return
+		}
+
+		if !t.raceCheck {
+			errCh <- t.cli.Set(ctx, key, value, t.ttl).Err()
+			return
+		}
+
+		script := `
+			local current = redis.call('get', KEYS[1])
+			if current then
+				local data = cjson.decode(current)
+				if data.version > tonumber(ARGV[2]) then
+					return 'RACE_CONDITION'
+				end
+			end
+			redis.call('set', KEYS[1], ARGV[1], 'PX', ARGV[3])
+			return 'OK'
+		`
+		result, err := t.cli.Eval(ctx, script, []string{key}, value, t.lastVersion, int64(t.ttl/time.Millisecond)).Result()
+		if err != nil {
+			errCh <- err
+			return
+		}
+		if result == "RACE_CONDITION" {
+			errCh <- ErrRaceCondition
+			return
+		}
+		errCh <- nil
+	}()
+
+	select {
+	case <-done:
+		err = <-errCh
 	case <-ctx.Done():
 		return ctx.Err()
 	}
 
-	return errors.Wrap(err, "failed to save keys to redis")
+	if err != nil {
+		return errors.Wrap(err, "failed to save state to redis")
+	}
+	return nil
 }
 
 // Reset resets the state in Redis.
