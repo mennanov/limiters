@@ -270,7 +270,7 @@ func (l *LeakyBucketEtcd) SetState(ctx context.Context, state LeakyBucketState) 
 		return l.save(ctx, state)
 	}
 	// Send the KeepAlive request to extend the existing lease.
-	if _, err := l.cli.KeepAliveOnce(ctx, l.leaseID); err == rpctypes.ErrLeaseNotFound {
+	if _, err := l.cli.KeepAliveOnce(ctx, l.leaseID); errors.Is(err, rpctypes.ErrLeaseNotFound) {
 		// Create a new lease since the current one has expired.
 		if err = l.createLease(ctx); err != nil {
 			return err
@@ -349,7 +349,7 @@ func (t *LeakyBucketRedis) oldState(ctx context.Context) (LeakyBucketState, erro
 			break
 		}
 	}
-	if nilAny || err == redis.Nil {
+	if nilAny || errors.Is(err, redis.Nil) {
 		// Keys don't exist, return an empty state.
 		return LeakyBucketState{}, nil
 	}
@@ -385,12 +385,12 @@ func (t *LeakyBucketRedis) State(ctx context.Context) (LeakyBucketState, error) 
 		defer close(done)
 		key := redisKey(t.prefix, "state")
 		value, err := t.cli.Get(ctx, key).Result()
-		if err != nil && err != redis.Nil {
+		if err != nil && !errors.Is(err, redis.Nil) {
 			errCh <- err
 			return
 		}
 
-		if err == redis.Nil {
+		if errors.Is(err, redis.Nil) {
 			state, err = t.oldState(ctx)
 			errCh <- err
 			return
