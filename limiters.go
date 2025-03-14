@@ -42,8 +42,7 @@ type Clock interface {
 }
 
 // SystemClock implements the Clock interface by using the real system clock.
-type SystemClock struct {
-}
+type SystemClock struct{}
 
 // NewSystemClock creates a new instance of SystemClock.
 func NewSystemClock() *SystemClock {

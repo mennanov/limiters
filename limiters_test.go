@@ -131,7 +131,10 @@ func (s *LimitersTestSuite) SetupSuite() {
 	connString := fmt.Sprintf("AccountEndpoint=http://%s/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==;", os.Getenv("COSMOS_ADDR"))
 	s.cosmosClient, err = azcosmos.NewClientFromConnectionString(connString, &azcosmos.ClientOptions{})
 	s.Require().NoError(err)
-	s.Require().NoError(CreateCosmosDBContainer(context.Background(), s.cosmosClient))
+
+	if err = CreateCosmosDBContainer(context.Background(), s.cosmosClient); err != nil {
+		s.Require().ErrorContains(err, "Database 'limiters-db-test' already exists")
+	}
 
 	s.cosmosContainerClient, err = s.cosmosClient.NewContainer(testCosmosDBName, testCosmosContainerName)
 	s.Require().NoError(err)
@@ -240,7 +243,6 @@ func (s *LimitersTestSuite) TestLimitContextCancelled() {
 				case concurrentLimiter:
 					s.Error(lim.Limit(ctx, "key"), "%T", limiter)
 				}
-
 			}(limiter)
 			done2 := make(chan struct{})
 			go func(limiter interface{}) {
