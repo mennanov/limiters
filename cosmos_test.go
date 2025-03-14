@@ -6,8 +6,10 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/data/azcosmos"
 )
 
-const testCosmosDBName = "limiters-db-test"
-const testCosmosContainerName = "limiters-container-test"
+const (
+	testCosmosDBName        = "limiters-db-test"
+	testCosmosContainerName = "limiters-container-test"
+)
 
 var defaultTTL int32 = 86400
 

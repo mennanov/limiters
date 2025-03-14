@@ -742,7 +742,6 @@ func NewTokenBucketDynamoDB(client *dynamodb.Client, partitionKey string, tableP
 // State gets the bucket's state from DynamoDB.
 func (t *TokenBucketDynamoDB) State(ctx context.Context) (TokenBucketState, error) {
 	resp, err := dynamoDBGetItem(ctx, t.client, t.getGetItemInput())
-
 	if err != nil {
 		return TokenBucketState{}, err
 	}

@@ -1,4 +1,4 @@
-all: goimports lint test benchmark
+all: gofumpt goimports lint test benchmark
 
 docker-compose-up:
 	docker compose up -d
@@ -16,3 +16,7 @@ lint:
 goimports:
 	@which goimports 2>&1 > /dev/null || go install golang.org/x/tools/cmd/goimports@latest
 	goimports -w .
+
+gofumpt:
+	@which gofumpt 2>&1 > /dev/null || go install mvdan.cc/gofumpt@latest
+	gofumpt -l -w .

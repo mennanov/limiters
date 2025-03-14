@@ -641,7 +641,6 @@ func NewLeakyBucketDynamoDB(client *dynamodb.Client, partitionKey string, tableP
 // State gets the bucket's state from DynamoDB.
 func (t *LeakyBucketDynamoDB) State(ctx context.Context) (LeakyBucketState, error) {
 	resp, err := dynamoDBGetItem(ctx, t.client, t.getGetItemInput())
-
 	if err != nil {
 		return LeakyBucketState{}, err
 	}

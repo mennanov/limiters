@@ -12,15 +12,15 @@ import (
 // DynamoDBTableProperties are supplied to DynamoDB limiter backends.
 // This struct informs the backend what the name of the table is and what the names of the key fields are.
 type DynamoDBTableProperties struct {
-	//TableName is the name of the table.
+	// TableName is the name of the table.
 	TableName string
-	//PartitionKeyName is the name of the PartitionKey attribute.
+	// PartitionKeyName is the name of the PartitionKey attribute.
 	PartitionKeyName string
-	//SortKeyName is the name of the SortKey attribute.
+	// SortKeyName is the name of the SortKey attribute.
 	SortKeyName string
-	//SortKeyUsed indicates if a SortKey is present on the table.
+	// SortKeyUsed indicates if a SortKey is present on the table.
 	SortKeyUsed bool
-	//TTLFieldName is the name of the attribute configured for TTL.
+	// TTLFieldName is the name of the attribute configured for TTL.
 	TTLFieldName string
 }
 
@@ -29,7 +29,6 @@ func LoadDynamoDBTableProperties(ctx context.Context, client *dynamodb.Client, t
 	resp, err := client.DescribeTable(ctx, &dynamodb.DescribeTableInput{
 		TableName: &tableName,
 	})
-
 	if err != nil {
 		return DynamoDBTableProperties{}, errors.Wrap(err, "describe dynamodb table failed")
 	}

@@ -16,7 +16,6 @@ linters:
     - gocritic
     - godot
     - godox
-    - gofumpt
     - gomoddirectives
     - gosec
     - inamedparam

@@ -80,7 +80,6 @@ func DeleteTestDynamoDBTable(ctx context.Context, client *dynamodb.Client) error
 	_, err := client.DeleteTable(ctx, &dynamodb.DeleteTableInput{
 		TableName: aws.String(testDynamoDBTableName),
 	})
-
 	if err != nil {
 		return errors.Wrap(err, "delete test dynamodb table failed")
 	}

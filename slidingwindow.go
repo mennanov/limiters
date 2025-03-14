@@ -282,7 +282,6 @@ func (s *SlidingWindowDynamoDB) Increment(ctx context.Context, prev, curr time.T
 			TableName:    &s.tableProps.TableName,
 			ReturnValues: types.ReturnValueAllNew,
 		})
-
 		if err != nil {
 			currentErr = errors.Wrap(err, "dynamodb get item failed")
 			return
@@ -310,7 +309,6 @@ func (s *SlidingWindowDynamoDB) Increment(ctx context.Context, prev, curr time.T
 			},
 			ConsistentRead: aws.Bool(true),
 		})
-
 		if err != nil {
 			priorCount, priorErr = 0, errors.Wrap(err, "dynamodb get item failed")
 			return
