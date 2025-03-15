@@ -7,10 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mennanov/limiters"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/mennanov/limiters"
 )
 
 type testingLimiter struct{}
@@ -30,6 +29,7 @@ func TestRegistry_GetOrCreate(t *testing.T) {
 	limiter := newTestingLimiter()
 	l := registry.GetOrCreate("key", func() interface{} {
 		called = true
+
 		return limiter
 	}, time.Second, clock.Now())
 	assert.Equal(t, limiter, l)
@@ -38,6 +38,7 @@ func TestRegistry_GetOrCreate(t *testing.T) {
 	called = false
 	l = registry.GetOrCreate("key", func() interface{} {
 		called = true
+
 		return newTestingLimiter()
 	}, time.Second, clock.Now())
 	assert.Equal(t, limiter, l)

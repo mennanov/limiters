@@ -21,6 +21,7 @@ func (s *LimitersTestSuite) leakyBuckets(capacity int64, rate time.Duration, clo
 			buckets[lockerName+":"+backendName] = l.NewLeakyBucket(capacity, rate, locker, backend, clock, s.logger)
 		}
 	}
+
 	return buckets
 }
 
@@ -201,14 +202,16 @@ func BenchmarkLeakyBuckets(b *testing.B) {
 	s.TearDownSuite()
 }
 
-// setStateInOldFormat is a test utility method for writing state in the old format to Redis
+// setStateInOldFormat is a test utility method for writing state in the old format to Redis.
 func setStateInOldFormat(ctx context.Context, cli *redis.Client, prefix string, state l.LeakyBucketState, ttl time.Duration) error {
 	_, err := cli.TxPipelined(ctx, func(pipeliner redis.Pipeliner) error {
 		if err := pipeliner.Set(ctx, fmt.Sprintf("{%s}last", prefix), state.Last, ttl).Err(); err != nil {
 			return err
 		}
+
 		return nil
 	})
+
 	return err
 }
 

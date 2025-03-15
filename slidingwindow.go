@@ -76,8 +76,10 @@ func (s *SlidingWindow) Limit(ctx context.Context) (time.Duration, error) {
 			// If prev == 0.
 			wait = ttl + time.Duration((1-float64(s.capacity-1)/float64(curr))*float64(s.rate))
 		}
+
 		return wait, ErrLimitExhausted
 	}
+
 	return 0, nil
 }
 
@@ -110,6 +112,7 @@ func (s *SlidingWindowInMemory) Increment(ctx context.Context, prev, curr time.T
 		s.currC = 0
 	}
 	s.currC++
+
 	return s.prevC, s.currC, ctx.Err()
 }
 
@@ -138,6 +141,7 @@ func (s *SlidingWindowRedis) Increment(ctx context.Context, prev, curr time.Time
 			incr = pipeliner.Incr(ctx, redisKey(s.prefix, currKey))
 			pipeliner.PExpire(ctx, redisKey(s.prefix, currKey), ttl)
 			prevCountCmd = pipeliner.Get(ctx, redisKey(s.prefix, fmt.Sprintf("%d", prev.UnixNano())))
+
 			return nil
 		})
 	}()
@@ -157,6 +161,7 @@ func (s *SlidingWindowRedis) Increment(ctx context.Context, prev, curr time.Time
 				return 0, 0, errors.Wrap(err, "failed to parse response from redis")
 			}
 		}
+
 		return prevCount, incr.Val(), nil
 	case <-ctx.Done():
 		return 0, 0, ctx.Err()
@@ -219,8 +224,10 @@ func (s *SlidingWindowMemcached) Increment(ctx context.Context, prev, curr time.
 			if errors.Is(err, memcache.ErrNotStored) {
 				return s.Increment(ctx, prev, curr, ttl)
 			}
+
 			return 0, 0, err
 		}
+
 		return int64(prevCount), int64(currCount), nil
 	case <-ctx.Done():
 		return 0, 0, ctx.Err()
@@ -239,7 +246,7 @@ type SlidingWindowDynamoDB struct {
 //
 // TableProps describe the table that this backend should work with. This backend requires the following on the table:
 // * SortKey
-// * TTL
+// * TTL.
 func NewSlidingWindowDynamoDB(client *dynamodb.Client, partitionKey string, props DynamoDBTableProperties) *SlidingWindowDynamoDB {
 	return &SlidingWindowDynamoDB{
 		client:       client,
@@ -284,6 +291,7 @@ func (s *SlidingWindowDynamoDB) Increment(ctx context.Context, prev, curr time.T
 		})
 		if err != nil {
 			currentErr = errors.Wrap(err, "dynamodb get item failed")
+
 			return
 		}
 
@@ -291,6 +299,7 @@ func (s *SlidingWindowDynamoDB) Increment(ctx context.Context, prev, curr time.T
 		err = attributevalue.Unmarshal(resp.Attributes[dynamodbWindowCountKey], &tmp)
 		if err != nil {
 			currentErr = errors.Wrap(err, "unmarshal of dynamodb attribute value failed")
+
 			return
 		}
 
@@ -311,11 +320,13 @@ func (s *SlidingWindowDynamoDB) Increment(ctx context.Context, prev, curr time.T
 		})
 		if err != nil {
 			priorCount, priorErr = 0, errors.Wrap(err, "dynamodb get item failed")
+
 			return
 		}
 
 		if len(resp.Item) == 0 {
 			priorCount = 0
+
 			return
 		}
 
@@ -323,6 +334,7 @@ func (s *SlidingWindowDynamoDB) Increment(ctx context.Context, prev, curr time.T
 		err = attributevalue.Unmarshal(resp.Item[dynamodbWindowCountKey], &count)
 		if err != nil {
 			priorCount, priorErr = 0, errors.Wrap(err, "unmarshal of dynamodb attribute value failed")
+
 			return
 		}
 
@@ -395,21 +407,25 @@ func (s *SlidingWindowCosmosDB) Increment(ctx context.Context, prev, curr time.T
 			err = json.Unmarshal(patchResp.Value, &tmp)
 			if err != nil {
 				currentErr = errors.Wrap(err, "unmarshal of cosmos value current failed")
+
 				return
 			}
 			currentCount = tmp.Count
+
 			return
 		}
 
 		var respErr *azcore.ResponseError
 		if !errors.As(err, &respErr) || respErr.StatusCode != http.StatusNotFound {
 			currentErr = errors.Wrap(err, `patch of cosmos value current failed`)
+
 			return
 		}
 
 		newValue, err := json.Marshal(tmp)
 		if err != nil {
 			currentErr = errors.Wrap(err, "marshal of cosmos value current failed")
+
 			return
 		}
 
@@ -419,6 +435,7 @@ func (s *SlidingWindowCosmosDB) Increment(ctx context.Context, prev, curr time.T
 		})
 		if err != nil {
 			currentErr = errors.Wrap(err, "upsert of cosmos value current failed")
+
 			return
 		}
 
@@ -436,9 +453,11 @@ func (s *SlidingWindowCosmosDB) Increment(ctx context.Context, prev, curr time.T
 			var azerr *azcore.ResponseError
 			if errors.As(err, &azerr) && azerr.StatusCode == http.StatusNotFound {
 				priorCount, priorErr = 0, nil
+
 				return
 			}
 			priorErr = errors.Wrap(err, "cosmos get item prior failed")
+
 			return
 		}
 
@@ -446,6 +465,7 @@ func (s *SlidingWindowCosmosDB) Increment(ctx context.Context, prev, curr time.T
 		err = json.Unmarshal(resp.Value, &tmp)
 		if err != nil {
 			priorErr = errors.Wrap(err, "unmarshal of cosmos value prior failed")
+
 			return
 		}
 

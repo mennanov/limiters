@@ -33,6 +33,7 @@ func CreateCosmosDBContainer(ctx context.Context, client *azcosmos.Client) error
 			Paths: []string{`/partitionKey`},
 		},
 	}, &azcosmos.CreateContainerOptions{})
+
 	return err
 }
 
@@ -43,5 +44,6 @@ func DeleteCosmosDBContainer(ctx context.Context, client *azcosmos.Client) error
 	}
 
 	_, err = dbClient.Delete(ctx, &azcosmos.DeleteDatabaseOptions{})
+
 	return err
 }
