@@ -78,6 +78,7 @@ func (s *LimitersTestSuite) tokenBuckets(capacity int64, refillRate time.Duratio
 			buckets[lockerName+":"+backendName] = l.NewTokenBucket(capacity, refillRate, locker, backend, clock, s.logger)
 		}
 	}
+
 	return buckets
 }
 
@@ -235,7 +236,7 @@ func (s *LimitersTestSuite) TestTokenBucketRefill() {
 	}
 }
 
-// setTokenBucketStateInOldFormat is a test utility method for writing state in the old format to Redis
+// setTokenBucketStateInOldFormat is a test utility method for writing state in the old format to Redis.
 func setTokenBucketStateInOldFormat(ctx context.Context, cli *redis.Client, prefix string, state l.TokenBucketState, ttl time.Duration) error {
 	_, err := cli.TxPipelined(ctx, func(pipeliner redis.Pipeliner) error {
 		if err := pipeliner.Set(ctx, fmt.Sprintf("{%s}last", prefix), state.Last, ttl).Err(); err != nil {
@@ -244,8 +245,10 @@ func setTokenBucketStateInOldFormat(ctx context.Context, cli *redis.Client, pref
 		if err := pipeliner.Set(ctx, fmt.Sprintf("{%s}available", prefix), state.Available, ttl).Err(); err != nil {
 			return err
 		}
+
 		return nil
 	})
+
 	return err
 }
 

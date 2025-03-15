@@ -70,8 +70,10 @@ func (f *FixedWindow) Limit(ctx context.Context) (time.Duration, error) {
 	}
 	if c > f.capacity {
 		f.overflow = true
+
 		return ttl, ErrLimitExhausted
 	}
+
 	return 0, nil
 }
 
@@ -96,6 +98,7 @@ func (f *FixedWindowInMemory) Increment(ctx context.Context, window time.Time, _
 		f.window = window
 	}
 	f.c++
+
 	return f.c, ctx.Err()
 }
 
@@ -122,6 +125,7 @@ func (f *FixedWindowRedis) Increment(ctx context.Context, window time.Time, ttl 
 			key := fmt.Sprintf("%d", window.UnixNano())
 			incr = pipeliner.Incr(ctx, redisKey(f.prefix, key))
 			pipeliner.PExpire(ctx, redisKey(f.prefix, key), ttl)
+
 			return nil
 		})
 	}()
@@ -131,6 +135,7 @@ func (f *FixedWindowRedis) Increment(ctx context.Context, window time.Time, ttl 
 		if err != nil {
 			return 0, errors.Wrap(err, "redis transaction failed")
 		}
+
 		return incr.Val(), incr.Err()
 	case <-ctx.Done():
 		return 0, ctx.Err()
@@ -174,8 +179,10 @@ func (f *FixedWindowMemcached) Increment(ctx context.Context, window time.Time, 
 			if errors.Is(err, memcache.ErrNotStored) {
 				return f.Increment(ctx, window, ttl)
 			}
+
 			return 0, errors.Wrap(err, "failed to Increment or Add")
 		}
+
 		return int64(newValue), err
 	case <-ctx.Done():
 		return 0, ctx.Err()
@@ -194,7 +201,7 @@ type FixedWindowDynamoDB struct {
 //
 // TableProps describe the table that this backend should work with. This backend requires the following on the table:
 // * SortKey
-// * TTL
+// * TTL.
 func NewFixedWindowDynamoDB(client *dynamodb.Client, partitionKey string, props DynamoDBTableProperties) *FixedWindowDynamoDB {
 	return &FixedWindowDynamoDB{
 		client:       client,
@@ -306,6 +313,7 @@ func (f *FixedWindowCosmosDB) Increment(ctx context.Context, window time.Time, t
 		if err != nil {
 			return 0, errors.Wrap(err, "unmarshal of cosmos value failed")
 		}
+
 		return tmp.Count, nil
 	}
 

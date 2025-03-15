@@ -57,8 +57,10 @@ func (c *ConcurrentBuffer) Limit(ctx context.Context, key string) error {
 		if err = c.backend.Remove(ctx, key); err != nil {
 			c.logger.Log(err)
 		}
+
 		return ErrLimitExhausted
 	}
+
 	return nil
 }
 
@@ -92,6 +94,7 @@ func (c *ConcurrentBufferInMemory) Add(ctx context.Context, key string) (int64, 
 	c.registry.GetOrCreate(key, func() interface{} {
 		return struct{}{}
 	}, c.ttl, now)
+
 	return int64(c.registry.Len()), ctx.Err()
 }
 
@@ -100,6 +103,7 @@ func (c *ConcurrentBufferInMemory) Remove(_ context.Context, key string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.registry.Delete(key)
+
 	return nil
 }
 
@@ -135,6 +139,7 @@ func (c *ConcurrentBufferRedis) Add(ctx context.Context, key string) (int64, err
 				Member: key,
 			})
 			countCmd = pipeliner.ZCard(ctx, c.key)
+
 			return nil
 		})
 	}()
@@ -147,6 +152,7 @@ func (c *ConcurrentBufferRedis) Add(ctx context.Context, key string) (int64, err
 		if err != nil {
 			return 0, errors.Wrap(err, "failed to add an item to redis set")
 		}
+
 		return countCmd.Val(), nil
 	}
 }
@@ -228,8 +234,10 @@ func (c *ConcurrentBufferMemcached) Add(ctx context.Context, element string) (in
 			if errors.Is(err, memcache.ErrCASConflict) || errors.Is(err, memcache.ErrNotStored) || errors.Is(err, memcache.ErrCacheMiss) {
 				return c.Add(ctx, element)
 			}
+
 			return 0, errors.Wrap(err, "failed to add in memcached")
 		}
+
 		return int64(len(newNodes)), nil
 	}
 }
@@ -245,6 +253,7 @@ func (c *ConcurrentBufferMemcached) Remove(ctx context.Context, key string) erro
 		if errors.Is(err, memcache.ErrCacheMiss) {
 			return nil
 		}
+
 		return errors.Wrap(err, "failed to Get")
 	}
 	casID = item.CasID
@@ -267,5 +276,6 @@ func (c *ConcurrentBufferMemcached) Remove(ctx context.Context, key string) erro
 	if err != nil && (errors.Is(err, memcache.ErrCASConflict) || errors.Is(err, memcache.ErrNotStored) || errors.Is(err, memcache.ErrCacheMiss)) {
 		return c.Remove(ctx, key)
 	}
+
 	return errors.Wrap(err, "failed to CompareAndSwap")
 }

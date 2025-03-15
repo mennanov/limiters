@@ -24,7 +24,7 @@ type DynamoDBTableProperties struct {
 	TTLFieldName string
 }
 
-// LoadDynamoDBTableProperties fetches a table description with the supplied client and returns a DynamoDBTableProperties struct
+// LoadDynamoDBTableProperties fetches a table description with the supplied client and returns a DynamoDBTableProperties struct.
 func LoadDynamoDBTableProperties(ctx context.Context, client *dynamodb.Client, tableName string) (DynamoDBTableProperties, error) {
 	resp, err := client.DescribeTable(ctx, &dynamodb.DescribeTableInput{
 		TableName: &tableName,
@@ -65,6 +65,7 @@ func loadTableKeys(data DynamoDBTableProperties, table *types.TableDescription) 
 	for _, key := range table.KeySchema {
 		if key.KeyType == types.KeyTypeHash {
 			data.PartitionKeyName = *key.AttributeName
+
 			continue
 		}
 

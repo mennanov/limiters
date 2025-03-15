@@ -110,6 +110,7 @@ func (t *LeakyBucket) Limit(ctx context.Context) (time.Duration, error) {
 	if err = t.backend.SetState(ctx, state); err != nil {
 		return 0, err
 	}
+
 	return time.Duration(wait), nil
 }
 
@@ -136,6 +137,7 @@ func (l *LeakyBucketInMemory) State(ctx context.Context) (LeakyBucketState, erro
 // SetState sets the current state of the bucket.
 func (l *LeakyBucketInMemory) SetState(ctx context.Context, state LeakyBucketState) error {
 	l.state = state
+
 	return ctx.Err()
 }
 
@@ -144,6 +146,7 @@ func (l *LeakyBucketInMemory) Reset(ctx context.Context) error {
 	state := LeakyBucketState{
 		Last: 0,
 	}
+
 	return l.SetState(ctx, state)
 }
 
@@ -218,6 +221,7 @@ func (l *LeakyBucketEtcd) State(ctx context.Context) (LeakyBucketState, error) {
 	if parsed != 3 {
 		return LeakyBucketState{}, errors.New("failed to get state from etcd: some keys are missing")
 	}
+
 	return state, nil
 }
 
@@ -228,6 +232,7 @@ func (l *LeakyBucketEtcd) createLease(ctx context.Context) error {
 		return errors.Wrap(err, "failed to create a new lease in etcd")
 	}
 	l.leaseID = lease.ID
+
 	return nil
 }
 
@@ -240,6 +245,7 @@ func (l *LeakyBucketEtcd) save(ctx context.Context, state LeakyBucketState) erro
 		).Commit(); err != nil {
 			return errors.Wrap(err, "failed to commit a transaction to etcd")
 		}
+
 		return nil
 	}
 	// Put the keys only if they have not been modified since the most recent read.
@@ -256,6 +262,7 @@ func (l *LeakyBucketEtcd) save(ctx context.Context, state LeakyBucketState) erro
 	if !r.Succeeded {
 		return nil
 	}
+
 	return ErrRaceCondition
 }
 
@@ -287,6 +294,7 @@ func (l *LeakyBucketEtcd) Reset(ctx context.Context) error {
 	state := LeakyBucketState{
 		Last: 0,
 	}
+
 	return l.SetState(ctx, state)
 }
 
@@ -346,6 +354,7 @@ func (t *LeakyBucketRedis) oldState(ctx context.Context) (LeakyBucketState, erro
 	for _, v := range values {
 		if v == nil {
 			nilAny = true
+
 			break
 		}
 	}
@@ -364,6 +373,7 @@ func (t *LeakyBucketRedis) oldState(ctx context.Context) (LeakyBucketState, erro
 			return LeakyBucketState{}, err
 		}
 	}
+
 	return LeakyBucketState{
 		Last: last,
 	}, nil
@@ -387,12 +397,14 @@ func (t *LeakyBucketRedis) State(ctx context.Context) (LeakyBucketState, error) 
 		value, err := t.cli.Get(ctx, key).Result()
 		if err != nil && !errors.Is(err, redis.Nil) {
 			errCh <- err
+
 			return
 		}
 
 		if errors.Is(err, redis.Nil) {
 			state, err = t.oldState(ctx)
 			errCh <- err
+
 			return
 		}
 
@@ -403,6 +415,7 @@ func (t *LeakyBucketRedis) State(ctx context.Context) (LeakyBucketState, error) 
 		}
 		if err = json.Unmarshal([]byte(value), &item); err != nil {
 			errCh <- err
+
 			return
 		}
 
@@ -447,11 +460,13 @@ func (t *LeakyBucketRedis) SetState(ctx context.Context, state LeakyBucketState)
 		value, err := json.Marshal(item)
 		if err != nil {
 			errCh <- err
+
 			return
 		}
 
 		if !t.raceCheck {
 			errCh <- t.cli.Set(ctx, key, value, t.ttl).Err()
+
 			return
 		}
 
@@ -469,10 +484,12 @@ func (t *LeakyBucketRedis) SetState(ctx context.Context, state LeakyBucketState)
 		result, err := t.cli.Eval(ctx, script, []string{key}, value, t.lastVersion, int64(t.ttl/time.Millisecond)).Result()
 		if err != nil {
 			errCh <- err
+
 			return
 		}
 		if result == "RACE_CONDITION" {
 			errCh <- ErrRaceCondition
+
 			return
 		}
 		errCh <- nil
@@ -488,6 +505,7 @@ func (t *LeakyBucketRedis) SetState(ctx context.Context, state LeakyBucketState)
 	if err != nil {
 		return errors.Wrap(err, "failed to save state to redis")
 	}
+
 	return nil
 }
 
@@ -496,6 +514,7 @@ func (t *LeakyBucketRedis) Reset(ctx context.Context) error {
 	state := LeakyBucketState{
 		Last: 0,
 	}
+
 	return t.SetState(ctx, state)
 }
 
@@ -541,6 +560,7 @@ func (t *LeakyBucketMemcached) State(ctx context.Context) (LeakyBucketState, err
 			// Keys don't exist, return an empty state.
 			return state, nil
 		}
+
 		return state, errors.Wrap(err, "failed to get keys from memcached")
 	}
 	b := bytes.NewBuffer(item.Value)
@@ -549,6 +569,7 @@ func (t *LeakyBucketMemcached) State(ctx context.Context) (LeakyBucketState, err
 		return state, errors.Wrap(err, "failed to Decode")
 	}
 	t.casId = item.CasID
+
 	return state, nil
 }
 
@@ -586,6 +607,7 @@ func (t *LeakyBucketMemcached) SetState(ctx context.Context, state LeakyBucketSt
 	if err != nil && (errors.Is(err, memcache.ErrCASConflict) || errors.Is(err, memcache.ErrNotStored) || errors.Is(err, memcache.ErrCacheMiss)) {
 		return ErrRaceCondition
 	}
+
 	return errors.Wrap(err, "failed to save keys to memcached")
 }
 
@@ -595,6 +617,7 @@ func (t *LeakyBucketMemcached) Reset(ctx context.Context) error {
 		Last: 0,
 	}
 	t.casId = 0
+
 	return t.SetState(ctx, state)
 }
 
@@ -673,6 +696,7 @@ func (t *LeakyBucketDynamoDB) Reset(ctx context.Context) error {
 	state := LeakyBucketState{
 		Last: 0,
 	}
+
 	return t.SetState(ctx, state)
 }
 
@@ -731,7 +755,7 @@ func (t *LeakyBucketDynamoDB) loadStateFromDynamoDB(resp *dynamodb.GetItemOutput
 	return state, nil
 }
 
-// CosmosDBLeakyBucketItem represents a document in CosmosDB for LeakyBucket
+// CosmosDBLeakyBucketItem represents a document in CosmosDB for LeakyBucket.
 type CosmosDBLeakyBucketItem struct {
 	ID           string           `json:"id"`
 	PartitionKey string           `json:"partitionKey"`
@@ -774,6 +798,7 @@ func (t *LeakyBucketCosmosDB) State(ctx context.Context) (LeakyBucketState, erro
 		if errors.As(err, &respErr) && respErr.StatusCode == http.StatusNotFound {
 			return LeakyBucketState{}, nil
 		}
+
 		return LeakyBucketState{}, err
 	}
 
@@ -826,6 +851,7 @@ func (t *LeakyBucketCosmosDB) SetState(ctx context.Context, state LeakyBucketSta
 		if errors.As(err, &respErr) && respErr.StatusCode == http.StatusConflict && t.raceCheck {
 			return ErrRaceCondition
 		}
+
 		return errors.Wrap(err, "failed to save keys to Cosmos DB")
 	}
 
@@ -836,5 +862,6 @@ func (t *LeakyBucketCosmosDB) Reset(ctx context.Context) error {
 	state := LeakyBucketState{
 		Last: 0,
 	}
+
 	return t.SetState(ctx, state)
 }

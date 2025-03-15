@@ -13,7 +13,6 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/data/azcosmos"
-
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -121,6 +120,7 @@ func (t *TokenBucket) Take(ctx context.Context, tokens int64) (time.Duration, er
 	if err = t.backend.SetState(ctx, state); err != nil {
 		return 0, err
 	}
+
 	return 0, nil
 }
 
@@ -158,6 +158,7 @@ func (t *TokenBucketInMemory) State(ctx context.Context) (TokenBucketState, erro
 // SetState sets the current bucket's state.
 func (t *TokenBucketInMemory) SetState(ctx context.Context, state TokenBucketState) error {
 	t.state = state
+
 	return ctx.Err()
 }
 
@@ -167,6 +168,7 @@ func (t *TokenBucketInMemory) Reset(ctx context.Context) error {
 		Last:      0,
 		Available: 0,
 	}
+
 	return t.SetState(ctx, state)
 }
 
@@ -226,12 +228,14 @@ func parseEtcdInt64(kv *mvccpb.KeyValue) (int64, error) {
 	if err != nil {
 		return 0, errors.Wrapf(err, "failed to parse key '%s' as int64", string(kv.Key))
 	}
+
 	return v, nil
 }
 
 func incPrefix(p string) string {
 	b := []byte(p)
 	b[len(b)-1]++
+
 	return string(b)
 }
 
@@ -281,6 +285,7 @@ func (t *TokenBucketEtcd) State(ctx context.Context) (TokenBucketState, error) {
 	if parsed != 7 {
 		return TokenBucketState{}, errors.New("failed to get state from etcd: some keys are missing")
 	}
+
 	return state, nil
 }
 
@@ -291,6 +296,7 @@ func (t *TokenBucketEtcd) createLease(ctx context.Context) error {
 		return errors.Wrap(err, "failed to create a new lease in etcd")
 	}
 	t.leaseID = lease.ID
+
 	return nil
 }
 
@@ -304,6 +310,7 @@ func (t *TokenBucketEtcd) save(ctx context.Context, state TokenBucketState) erro
 		).Commit(); err != nil {
 			return errors.Wrap(err, "failed to commit a transaction to etcd")
 		}
+
 		return nil
 	}
 	// Put the keys only if they have not been modified since the most recent read.
@@ -321,6 +328,7 @@ func (t *TokenBucketEtcd) save(ctx context.Context, state TokenBucketState) erro
 	if !r.Succeeded {
 		return nil
 	}
+
 	return ErrRaceCondition
 }
 
@@ -343,6 +351,7 @@ func (t *TokenBucketEtcd) SetState(ctx context.Context, state TokenBucketState) 
 	} else if err != nil {
 		return errors.Wrapf(err, "failed to extend the lease '%d'", t.leaseID)
 	}
+
 	return t.save(ctx, state)
 }
 
@@ -352,6 +361,7 @@ func (t *TokenBucketEtcd) Reset(ctx context.Context) error {
 		Last:      0,
 		Available: 0,
 	}
+
 	return t.SetState(ctx, state)
 }
 
@@ -437,6 +447,7 @@ func (t *TokenBucketRedis) oldState(ctx context.Context) (TokenBucketState, erro
 	for _, v := range values {
 		if v == nil {
 			nilAny = true
+
 			break
 		}
 	}
@@ -459,6 +470,7 @@ func (t *TokenBucketRedis) oldState(ctx context.Context) (TokenBucketState, erro
 			return TokenBucketState{}, err
 		}
 	}
+
 	return TokenBucketState{
 		Last:      last,
 		Available: available,
@@ -483,12 +495,14 @@ func (t *TokenBucketRedis) State(ctx context.Context) (TokenBucketState, error) 
 		value, err := t.cli.Get(ctx, key).Result()
 		if err != nil && !errors.Is(err, redis.Nil) {
 			errCh <- err
+
 			return
 		}
 
 		if errors.Is(err, redis.Nil) {
 			state, err = t.oldState(ctx)
 			errCh <- err
+
 			return
 		}
 
@@ -499,6 +513,7 @@ func (t *TokenBucketRedis) State(ctx context.Context) (TokenBucketState, error) 
 		}
 		if err = json.Unmarshal([]byte(value), &item); err != nil {
 			errCh <- err
+
 			return
 		}
 
@@ -543,11 +558,13 @@ func (t *TokenBucketRedis) SetState(ctx context.Context, state TokenBucketState)
 		value, err := json.Marshal(item)
 		if err != nil {
 			errCh <- err
+
 			return
 		}
 
 		if !t.raceCheck {
 			errCh <- t.cli.Set(ctx, key, value, t.ttl).Err()
+
 			return
 		}
 
@@ -565,10 +582,12 @@ func (t *TokenBucketRedis) SetState(ctx context.Context, state TokenBucketState)
 		result, err := t.cli.Eval(ctx, script, []string{key}, value, t.lastVersion, int64(t.ttl/time.Millisecond)).Result()
 		if err != nil {
 			errCh <- err
+
 			return
 		}
 		if result == "RACE_CONDITION" {
 			errCh <- ErrRaceCondition
+
 			return
 		}
 		errCh <- nil
@@ -584,6 +603,7 @@ func (t *TokenBucketRedis) SetState(ctx context.Context, state TokenBucketState)
 	if err != nil {
 		return errors.Wrap(err, "failed to save state to redis")
 	}
+
 	return nil
 }
 
@@ -593,6 +613,7 @@ func (t *TokenBucketRedis) Reset(ctx context.Context) error {
 		Last:      0,
 		Available: 0,
 	}
+
 	return t.SetState(ctx, state)
 }
 
@@ -644,6 +665,7 @@ func (t *TokenBucketMemcached) State(ctx context.Context) (TokenBucketState, err
 			// Keys don't exist, return the initial state.
 			return state, nil
 		}
+
 		return state, errors.Wrap(err, "failed to get key from memcached")
 	}
 	b := bytes.NewBuffer(item.Value)
@@ -652,6 +674,7 @@ func (t *TokenBucketMemcached) State(ctx context.Context) (TokenBucketState, err
 		return state, errors.Wrap(err, "failed to Decode")
 	}
 	t.casId = item.CasID
+
 	return state, nil
 }
 
@@ -696,6 +719,7 @@ func (t *TokenBucketMemcached) Reset(ctx context.Context) error {
 	}
 	// Override casId to 0 to Set instead of CompareAndSwap in SetState
 	t.casId = 0
+
 	return t.SetState(ctx, state)
 }
 
@@ -775,6 +799,7 @@ func (t *TokenBucketDynamoDB) Reset(ctx context.Context) error {
 		Last:      0,
 		Available: 0,
 	}
+
 	return t.SetState(ctx, state)
 }
 
@@ -836,7 +861,7 @@ func (t *TokenBucketDynamoDB) loadStateFromDynamoDB(resp *dynamodb.GetItemOutput
 	return state, nil
 }
 
-// CosmosDBTokenBucketItem represents a document in CosmosDB
+// CosmosDBTokenBucketItem represents a document in CosmosDB.
 type CosmosDBTokenBucketItem struct {
 	ID           string           `json:"id"`
 	PartitionKey string           `json:"partitionKey"`
@@ -879,6 +904,7 @@ func (t *TokenBucketCosmosDB) State(ctx context.Context) (TokenBucketState, erro
 		if errors.As(err, &respErr) && respErr.StatusCode == http.StatusNotFound {
 			return TokenBucketState{}, nil
 		}
+
 		return TokenBucketState{}, err
 	}
 
@@ -931,6 +957,7 @@ func (t *TokenBucketCosmosDB) SetState(ctx context.Context, state TokenBucketSta
 		if errors.As(err, &respErr) && respErr.StatusCode == http.StatusConflict && t.raceCheck {
 			return ErrRaceCondition
 		}
+
 		return errors.Wrap(err, "failed to save keys to Cosmos DB")
 	}
 
@@ -942,5 +969,6 @@ func (t *TokenBucketCosmosDB) Reset(ctx context.Context) error {
 		Last:      0,
 		Available: 0,
 	}
+
 	return t.SetState(ctx, state)
 }
