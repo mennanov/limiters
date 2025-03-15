@@ -8,11 +8,9 @@ linters:
     - exhaustruct
     - forcetypeassert
     - funlen
-    - gci
     - gochecknoglobals
     - goconst
     - gocritic
-    - godot
     - godox
     - gomoddirectives
     - gosec
@@ -21,7 +19,6 @@ linters:
     - lll
     - mnd
     - musttag
-    - nlreturn
     - paralleltest
     - perfsprint
     - recvcheck
@@ -32,6 +29,5 @@ linters:
     - testifylint
     - unparam
     - varnamelen
-    - whitespace
     - wrapcheck
     - wsl

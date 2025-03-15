@@ -42,6 +42,7 @@ func (pq *gcPq) Pop() interface{} {
 	item := old[n-1]
 	item.index = -1 // for safety
 	*pq = old[0 : n-1]
+
 	return item
 }
 
@@ -56,6 +57,7 @@ type Registry struct {
 // NewRegistry creates a new instance of Registry.
 func NewRegistry() *Registry {
 	pq := make(gcPq, 0)
+
 	return &Registry{pq: &pq, m: make(map[string]*pqItem)}
 }
 
@@ -99,6 +101,7 @@ func (r *Registry) DeleteExpired(now time.Time) int {
 		heap.Pop(r.pq)
 		c++
 	}
+
 	return c
 }
 
@@ -119,6 +122,7 @@ func (r *Registry) Exists(key string) bool {
 	r.mx.Lock()
 	defer r.mx.Unlock()
 	_, ok := r.m[key]
+
 	return ok
 }
 
@@ -126,5 +130,6 @@ func (r *Registry) Exists(key string) bool {
 func (r *Registry) Len() int {
 	r.mx.Lock()
 	defer r.mx.Unlock()
+
 	return len(*r.pq)
 }

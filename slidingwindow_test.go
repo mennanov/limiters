@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-
 	l "github.com/mennanov/limiters"
 )
 
@@ -16,6 +15,7 @@ func (s *LimitersTestSuite) slidingWindows(capacity int64, rate time.Duration, c
 	for name, inc := range s.slidingWindowIncrementers() {
 		windows[name] = l.NewSlidingWindow(capacity, rate, inc, clock, epsilon)
 	}
+
 	return windows
 }
 

@@ -20,12 +20,11 @@ import (
 	"github.com/go-redsync/redsync/v4/redis/goredis/v9"
 	"github.com/google/uuid"
 	"github.com/hashicorp/consul/api"
+	l "github.com/mennanov/limiters"
 	"github.com/redis/go-redis/v9"
 	"github.com/samuel/go-zookeeper/zk"
 	"github.com/stretchr/testify/suite"
 	clientv3 "go.etcd.io/etcd/client/v3"
-
-	l "github.com/mennanov/limiters"
 )
 
 type fakeClock struct {
@@ -36,6 +35,7 @@ type fakeClock struct {
 
 func newFakeClock() *fakeClock {
 	now := time.Now()
+
 	return &fakeClock{t: now, initial: now}
 }
 
@@ -46,6 +46,7 @@ func newFakeClockWithTime(t time.Time) *fakeClock {
 func (c *fakeClock) Now() time.Time {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	return c.t
 }
 
@@ -158,6 +159,7 @@ func TestLimitersTestSuite(t *testing.T) {
 func (s *LimitersTestSuite) lockers(generateKeys bool) map[string]l.DistLocker {
 	lockers := s.distLockers(generateKeys)
 	lockers["LockNoop"] = l.NewLockNoop()
+
 	return lockers
 }
 
@@ -167,6 +169,7 @@ func hash(s string) int64 {
 	if err != nil {
 		panic(err)
 	}
+
 	return int64(h.Sum32())
 }
 
@@ -189,6 +192,7 @@ func (s *LimitersTestSuite) distLockers(generateKeys bool) map[string]l.DistLock
 	}
 	consulLock, err := s.consulClient.LockKey(consulKey)
 	s.Require().NoError(err)
+
 	return map[string]l.DistLocker{
 		"LockEtcd":         l.NewLockEtcd(s.etcdClient, etcdKey, s.logger),
 		"LockConsul":       l.NewLockConsul(consulLock),

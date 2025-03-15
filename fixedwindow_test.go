@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-
 	l "github.com/mennanov/limiters"
 )
 
@@ -16,6 +15,7 @@ func (s *LimitersTestSuite) fixedWindows(capacity int64, rate time.Duration, clo
 	for name, inc := range s.fixedWindowIncrementers() {
 		windows[name] = l.NewFixedWindow(capacity, rate, inc, clock)
 	}
+
 	return windows
 }
 
