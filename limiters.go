@@ -35,7 +35,7 @@ func (l *StdLogger) Log(v ...interface{}) {
 }
 
 // Clock encapsulates a system Clock.
-// Used
+// Used.
 type Clock interface {
 	// Now returns the current system time.
 	Now() time.Time

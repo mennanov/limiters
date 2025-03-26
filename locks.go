@@ -70,6 +70,7 @@ func (l *LockEtcd) Lock(ctx context.Context) error {
 		return errors.Wrap(err, "failed to create an etcd session")
 	}
 	l.mu = concurrency.NewMutex(l.session, l.prefix)
+
 	return errors.Wrap(l.mu.Lock(ctx), "failed to lock a mutex in etcd")
 }
 
@@ -80,6 +81,7 @@ func (l *LockEtcd) Unlock(ctx context.Context) error {
 			l.logger.Log(err)
 		}
 	}()
+
 	return errors.Wrap(l.mu.Unlock(ctx), "failed to unlock a mutex in etcd")
 }
 
@@ -96,6 +98,7 @@ func NewLockConsul(lock *api.Lock) *LockConsul {
 // Lock locks the lock in Consul.
 func (l *LockConsul) Lock(ctx context.Context) error {
 	_, err := l.lock.Lock(ctx.Done())
+
 	return errors.Wrap(err, "failed to lock a mutex in consul")
 }
 
@@ -134,12 +137,14 @@ type LockRedis struct {
 func NewLockRedis(pool redsyncredis.Pool, mutexName string, options ...redsync.Option) *LockRedis {
 	rs := redsync.New(pool)
 	mutex := rs.NewMutex(mutexName, options...)
+
 	return &LockRedis{mutex: mutex}
 }
 
 // Lock locks the lock in Redis.
 func (l *LockRedis) Lock(ctx context.Context) error {
 	err := l.mutex.LockContext(ctx)
+
 	return errors.Wrap(err, "failed to lock a mutex in redis")
 }
 
@@ -148,12 +153,13 @@ func (l *LockRedis) Unlock(ctx context.Context) error {
 	if ok, err := l.mutex.UnlockContext(ctx); !ok || err != nil {
 		return errors.Wrap(err, "failed to unlock a mutex in redis")
 	}
+
 	return nil
 }
 
 // LockMemcached is a wrapper around github.com/alessandro-c/gomemcached-lock that implements the DistLocker interface.
 // It is caller's responsibility to make sure the uniqueness of mutexName, and not to use the same key in multiple
-// Memcached-based implementations
+// Memcached-based implementations.
 type LockMemcached struct {
 	locker    *lock.Locker
 	mutexName string
@@ -166,6 +172,7 @@ func NewLockMemcached(client *memcache.Client, mutexName string) *LockMemcached 
 	adapter := gomemcache.New(client)
 	locker := lock.New(adapter, mutexName, "")
 	b := backoff.WithMaxRetries(backoff.NewConstantBackOff(100*time.Millisecond), 100)
+
 	return &LockMemcached{
 		locker:    locker,
 		mutexName: mutexName,
@@ -176,12 +183,14 @@ func NewLockMemcached(client *memcache.Client, mutexName string) *LockMemcached 
 // WithLockAcquireBackoff sets the backoff policy for retrying an operation.
 func (l *LockMemcached) WithLockAcquireBackoff(b backoff.BackOff) *LockMemcached {
 	l.backoff = b
+
 	return l
 }
 
 // Lock locks the lock in Memcached.
 func (l *LockMemcached) Lock(ctx context.Context) error {
 	o := func() error { return l.locker.Lock(time.Minute) }
+
 	return backoff.Retry(o, l.backoff)
 }
 
@@ -202,10 +211,10 @@ func NewLockPostgreSQL(db *sql.DB, id int64) *LockPostgreSQL {
 	return &LockPostgreSQL{db, id, nil}
 }
 
-// Make sure LockPostgreSQL implements DistLocker interface
+// Make sure LockPostgreSQL implements DistLocker interface.
 var _ DistLocker = (*LockPostgreSQL)(nil)
 
-// Lock acquire an advisory lock in PostgreSQL
+// Lock acquire an advisory lock in PostgreSQL.
 func (l *LockPostgreSQL) Lock(ctx context.Context) error {
 	var err error
 	l.tx, err = l.db.BeginTx(ctx, &sql.TxOptions{})
@@ -213,10 +222,11 @@ func (l *LockPostgreSQL) Lock(ctx context.Context) error {
 		return err
 	}
 	_, err = l.tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock($1)", l.id)
+
 	return err
 }
 
-// Unlock releases an advisory lock in PostgreSQL
+// Unlock releases an advisory lock in PostgreSQL.
 func (l *LockPostgreSQL) Unlock(ctx context.Context) error {
 	return l.tx.Rollback()
 }
