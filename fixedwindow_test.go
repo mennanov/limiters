@@ -116,6 +116,8 @@ func (s *LimitersTestSuite) TestFixedWindowDynamoDBPartitionKey() {
 	w, err = window.Limit(context.TODO())
 	s.Require().NoError(err)
 	s.Equal(time.Duration(0), w)
+	w, err = window.Limit(context.TODO())
+	s.Require().Error(err)
 	// The third call should fail for the "partitionKey1", but succeed for "partitionKey2".
 	w, err = window.Limit(l.NewFixedWindowDynamoDBContext(context.Background(), "partitionKey2"))
 	s.Require().NoError(err)

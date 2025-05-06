@@ -25,6 +25,7 @@ type FixedWindowIncrementer interface {
 	// Increment increments the request counter for the window and returns the counter value.
 	// TTL is the time duration before the next window.
 	Increment(ctx context.Context, window time.Time, ttl time.Duration) (int64, error)
+	PartitionKey(ctx context.Context) string
 }
 
 // FixedWindow implements a Fixed Window rate limiting algorithm.
@@ -32,13 +33,13 @@ type FixedWindowIncrementer interface {
 // Simple and memory efficient algorithm that does not need a distributed lock.
 // However it may be lenient when there are many requests around the boundary between 2 adjacent windows.
 type FixedWindow struct {
-	backend  FixedWindowIncrementer
-	clock    Clock
-	rate     time.Duration
-	capacity int64
-	mu       sync.Mutex
-	window   time.Time
-	overflow bool
+	backend       FixedWindowIncrementer
+	clock         Clock
+	rate          time.Duration
+	capacity      int64
+	mu            sync.Mutex
+	window        time.Time
+	overflowCache map[string]bool
 }
 
 // NewFixedWindow creates a new instance of FixedWindow.
@@ -55,21 +56,28 @@ func (f *FixedWindow) Limit(ctx context.Context) (time.Duration, error) {
 	defer f.mu.Unlock()
 	now := f.clock.Now()
 	window := now.Truncate(f.rate)
+
+	partition := f.backend.PartitionKey(ctx)
+
 	if f.window != window {
 		f.window = window
-		f.overflow = false
+		f.overflowCache = make(map[string]bool)
 	}
+
 	ttl := f.rate - now.Sub(window)
-	if f.overflow {
+	overflow, ok := f.overflowCache[partition]
+	if ok && overflow {
 		// If the window is already overflowed don't increment the counter.
 		return ttl, ErrLimitExhausted
 	}
+
 	c, err := f.backend.Increment(ctx, window, ttl)
 	if err != nil {
 		return 0, err
 	}
+
 	if c > f.capacity {
-		f.overflow = true
+		f.overflowCache[partition] = true
 
 		return ttl, ErrLimitExhausted
 	}
@@ -89,6 +97,8 @@ func NewFixedWindowInMemory() *FixedWindowInMemory {
 	return &FixedWindowInMemory{}
 }
 
+func (f *FixedWindowInMemory) PartitionKey(ctx context.Context) string { return "" }
+
 // Increment increments the window's counter.
 func (f *FixedWindowInMemory) Increment(ctx context.Context, window time.Time, _ time.Duration) (int64, error) {
 	f.mu.Lock()
@@ -107,6 +117,8 @@ type FixedWindowRedis struct {
 	cli    redis.UniversalClient
 	prefix string
 }
+
+func (f *FixedWindowRedis) PartitionKey(ctx context.Context) string { return "" }
 
 // NewFixedWindowRedis returns a new instance of FixedWindowRedis.
 // Prefix is the key prefix used to store all the keys used in this implementation in Redis.
@@ -141,6 +153,8 @@ func (f *FixedWindowRedis) Increment(ctx context.Context, window time.Time, ttl 
 		return 0, ctx.Err()
 	}
 }
+
+func (f *FixedWindowMemcached) PartitionKey(ctx context.Context) string { return "" }
 
 // FixedWindowMemcached implements FixedWindow in Memcached.
 type FixedWindowMemcached struct {
@@ -221,6 +235,14 @@ func NewFixedWindowDynamoDBContext(ctx context.Context, partitionKey string) con
 	return context.WithValue(ctx, fixedWindowDynamoDBPartitionKey, partitionKey)
 }
 
+func (f *FixedWindowDynamoDB) PartitionKey(ctx context.Context) string {
+	if key, ok := ctx.Value(fixedWindowDynamoDBPartitionKey).(string); ok {
+		return key
+	}
+
+	return f.partitionKey
+}
+
 const (
 	fixedWindowDynamoDBUpdateExpression = "SET #C = if_not_exists(#C, :def) + :inc, #TTL = :ttl"
 	dynamodbWindowCountKey              = "Count"
@@ -234,10 +256,7 @@ func (f *FixedWindowDynamoDB) Increment(ctx context.Context, window time.Time, t
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		partitionKey := f.partitionKey
-		if key, ok := ctx.Value(fixedWindowDynamoDBPartitionKey).(string); ok {
-			partitionKey = key
-		}
+		partitionKey := f.PartitionKey(ctx)
 		resp, err = f.client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 			Key: map[string]types.AttributeValue{
 				f.tableProps.PartitionKeyName: &types.AttributeValueMemberS{Value: partitionKey},
@@ -282,6 +301,8 @@ type FixedWindowCosmosDB struct {
 	client       *azcosmos.ContainerClient
 	partitionKey string
 }
+
+func (f *FixedWindowCosmosDB) PartitionKey(ctx context.Context) string { return "" }
 
 // NewFixedWindowCosmosDB creates a new instance of FixedWindowCosmosDB.
 // PartitionKey is the key used for partitioning data into multiple partitions.
