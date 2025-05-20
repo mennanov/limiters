@@ -89,10 +89,7 @@ func (r *Registry) DeleteExpired(now time.Time) int {
 	r.mx.Lock()
 	defer r.mx.Unlock()
 	c := 0
-	for {
-		if len(*r.pq) == 0 {
-			break
-		}
+	for len(*r.pq) != 0 {
 		item := (*r.pq)[0]
 		if now.Before(item.exp) {
 			break

@@ -75,7 +75,7 @@ func loadTableKeys(data DynamoDBTableProperties, table *types.TableDescription) 
 
 	for _, attribute := range table.AttributeDefinitions {
 		name := *attribute.AttributeName
-		if !(name == data.PartitionKeyName || name == data.SortKeyName) {
+		if name != data.PartitionKeyName && name != data.SortKeyName {
 			continue
 		}
 

@@ -1,5 +1,6 @@
+version: "2"
 linters:
-  enable-all: true
+  default: all
   disable:
     - cyclop
     - depguard
@@ -7,6 +8,7 @@ linters:
     - dupword
     - exhaustruct
     - forcetypeassert
+    - funcorder
     - funlen
     - gochecknoglobals
     - goconst
@@ -23,11 +25,32 @@ linters:
     - perfsprint
     - recvcheck
     - revive
-    - stylecheck
     - tagliatelle
-    - tenv
     - testifylint
     - unparam
     - varnamelen
     - wrapcheck
     - wsl
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - gofumpt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

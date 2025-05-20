@@ -1,8 +1,9 @@
 // Package examples implements a gRPC server for Greeter service using rate limiters.
-package examples
+package examples_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -10,21 +11,20 @@ import (
 	"strings"
 	"time"
 
-	clientv3 "go.etcd.io/etcd/client/v3"
-	"google.golang.org/grpc/credentials/insecure"
-
+	"github.com/mennanov/limiters"
+	"github.com/mennanov/limiters/examples"
+	pb "github.com/mennanov/limiters/examples/helloworld"
 	"github.com/redis/go-redis/v9"
+	clientv3 "go.etcd.io/etcd/client/v3"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
-
-	"github.com/mennanov/limiters"
-	pb "github.com/mennanov/limiters/examples/helloworld"
 )
 
 func Example_simpleGRPCLimiter() {
 	// Set up a gRPC server.
-	lis, err := net.Listen("tcp", port)
+	lis, err := net.Listen("tcp", examples.Port)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
@@ -58,19 +58,21 @@ func Example_simpleGRPCLimiter() {
 
 	// Add a unary interceptor middleware to rate limit all requests.
 	s := grpc.NewServer(grpc.UnaryInterceptor(
-		func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
+		func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 			w, err := limiter.Limit(ctx)
-			if err == limiters.ErrLimitExhausted {
+			if errors.Is(err, limiters.ErrLimitExhausted) {
 				return nil, status.Errorf(codes.ResourceExhausted, "try again later in %s", w)
 			} else if err != nil {
 				// The limiter failed. This error should be logged and examined.
 				log.Println(err)
+
 				return nil, status.Error(codes.Internal, "internal error")
 			}
+
 			return handler(ctx, req)
 		}))
 
-	pb.RegisterGreeterServer(s, &server{})
+	pb.RegisterGreeterServer(s, &examples.Server{})
 	go func() {
 		// Start serving.
 		if err = s.Serve(lis); err != nil {
@@ -80,7 +82,7 @@ func Example_simpleGRPCLimiter() {
 	defer s.GracefulStop()
 
 	// Set up a client connection to the server.
-	conn, err := grpc.NewClient(fmt.Sprintf("localhost%s", port), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(fmt.Sprintf("localhost%s", examples.Port), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Fatalf("did not connect: %v", err)
 	}
@@ -100,7 +102,7 @@ func Example_simpleGRPCLimiter() {
 		log.Fatalf("could not greet: %v", err)
 	}
 	fmt.Println(r.GetMessage())
-	r, err = c.SayHello(ctx, &pb.HelloRequest{Name: "Peter"})
+	_, err = c.SayHello(ctx, &pb.HelloRequest{Name: "Peter"})
 	if err == nil {
 		log.Fatal("error expected, but got nil")
 	}
