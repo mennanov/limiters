@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"sync"
@@ -217,7 +218,13 @@ var fixedWindowDynamoDBPartitionKey contextKey
 // NewFixedWindowDynamoDBContext creates a context for FixedWindowDynamoDB with a partition key.
 //
 // This context can be used to control the partition key per-request.
+//
+// DEPRECATED: NewFixedWindowDynamoDBContext is deprecated and will be removed in future versions.
+// Separate FixedWindow rate limiters should be used for different partition keys instead.
+// Consider using the `Registry` to manage multiple FixedWindow instances with different partition keys.
 func NewFixedWindowDynamoDBContext(ctx context.Context, partitionKey string) context.Context {
+	log.Printf("DEPRECATED: NewFixedWindowDynamoDBContext is deprecated and will be removed in future versions.")
+
 	return context.WithValue(ctx, fixedWindowDynamoDBPartitionKey, partitionKey)
 }
 
