@@ -7,17 +7,17 @@ import (
 )
 
 const (
-	port = ":50051"
+	Port = ":50051"
 )
 
 // server is used to implement helloworld.GreeterServer.
-type server struct {
+type Server struct {
 	pb.UnimplementedGreeterServer
 }
 
 // SayHello implements helloworld.GreeterServer.
-func (s *server) SayHello(_ context.Context, in *pb.HelloRequest) (*pb.HelloReply, error) {
+func (s *Server) SayHello(_ context.Context, in *pb.HelloRequest) (*pb.HelloReply, error) {
 	return &pb.HelloReply{Message: "Hello " + in.GetName()}, nil
 }
 
-var _ pb.GreeterServer = new(server)
+var _ pb.GreeterServer = new(Server)

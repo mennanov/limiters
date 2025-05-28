@@ -101,7 +101,7 @@ func (s *SlidingWindowInMemory) Increment(ctx context.Context, prev, curr time.T
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if curr != s.currW {
-		if prev == s.currW {
+		if prev.Equal(s.currW) {
 			s.prevW = s.currW
 			s.prevC = s.currC
 		} else {
