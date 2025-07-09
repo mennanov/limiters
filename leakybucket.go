@@ -586,9 +586,10 @@ func (t *LeakyBucketMemcached) SetState(ctx context.Context, state LeakyBucketSt
 	go func() {
 		defer close(done)
 		item := &memcache.Item{
-			Key:   t.key,
-			Value: b.Bytes(),
-			CasID: t.casId,
+			Key:        t.key,
+			Value:      b.Bytes(),
+			CasID:      t.casId,
+			Expiration: int32(t.ttl.Seconds()),
 		}
 		if t.raceCheck && t.casId > 0 {
 			err = t.cli.CompareAndSwap(item)
