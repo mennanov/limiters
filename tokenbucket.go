@@ -690,9 +690,10 @@ func (t *TokenBucketMemcached) SetState(ctx context.Context, state TokenBucketSt
 	go func() {
 		defer close(done)
 		item := &memcache.Item{
-			Key:   t.key,
-			Value: b.Bytes(),
-			CasID: t.casId,
+			Key:        t.key,
+			Value:      b.Bytes(),
+			CasID:      t.casId,
+			Expiration: int32(time.Now().Add(t.ttl).Unix()),
 		}
 		if t.raceCheck && t.casId > 0 {
 			err = t.cli.CompareAndSwap(item)
