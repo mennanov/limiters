@@ -173,6 +173,44 @@ func (s *LimitersTestSuite) TestLeakyBucketReset() {
 	}
 }
 
+// TestLeakyBucketMemcachedExpiry verifies Memcached TTL expiry for LeakyBucketMemcached (no race check).
+func (s *LimitersTestSuite) TestLeakyBucketMemcachedExpiry() {
+	ttl := time.Second
+	backend := l.NewLeakyBucketMemcached(s.memcacheClient, uuid.New().String(), ttl, false)
+	bucket := l.NewLeakyBucket(2, time.Second, l.NewLockNoop(), backend, l.NewSystemClock(), s.logger)
+	ctx := context.Background()
+	_, err := bucket.Limit(ctx)
+	s.Require().NoError(err)
+	_, err = bucket.Limit(ctx)
+	s.Require().NoError(err)
+	state, err := backend.State(ctx)
+	s.Require().NoError(err)
+	s.NotEqual(int64(0), state.Last, "Last should be set after token takes")
+	time.Sleep(ttl + 1500*time.Millisecond)
+	state, err = backend.State(ctx)
+	s.Require().NoError(err)
+	s.Equal(int64(0), state.Last, "State should be zero after expiry, got: %+v", state)
+}
+
+// TestLeakyBucketMemcachedExpiryWithRaceCheck verifies Memcached TTL expiry for LeakyBucketMemcached (race check enabled).
+func (s *LimitersTestSuite) TestLeakyBucketMemcachedExpiryWithRaceCheck() {
+	ttl := time.Second
+	backend := l.NewLeakyBucketMemcached(s.memcacheClient, uuid.New().String(), ttl, true)
+	bucket := l.NewLeakyBucket(2, time.Second, l.NewLockNoop(), backend, l.NewSystemClock(), s.logger)
+	ctx := context.Background()
+	_, err := bucket.Limit(ctx)
+	s.Require().NoError(err)
+	_, err = bucket.Limit(ctx)
+	s.Require().NoError(err)
+	state, err := backend.State(ctx)
+	s.Require().NoError(err)
+	s.NotEqual(int64(0), state.Last, "Last should be set after token takes")
+	time.Sleep(ttl + 1500*time.Millisecond)
+	state, err = backend.State(ctx)
+	s.Require().NoError(err)
+	s.Equal(int64(0), state.Last, "State should be zero after expiry, got: %+v", state)
+}
+
 func TestLeakyBucket_ZeroCapacity_ReturnsError(t *testing.T) {
 	capacity := int64(0)
 	rate := time.Hour

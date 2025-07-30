@@ -236,6 +236,44 @@ func (s *LimitersTestSuite) TestTokenBucketRefill() {
 	}
 }
 
+// TestTokenBucketMemcachedExpiry verifies Memcached TTL expiry for TokenBucketMemcached (no race check).
+func (s *LimitersTestSuite) TestTokenBucketMemcachedExpiry() {
+	ttl := time.Second
+	backend := l.NewTokenBucketMemcached(s.memcacheClient, uuid.New().String(), ttl, false)
+	bucket := l.NewTokenBucket(2, time.Second, l.NewLockNoop(), backend, l.NewSystemClock(), s.logger)
+	ctx := context.Background()
+	_, err := bucket.Limit(ctx)
+	s.Require().NoError(err)
+	_, err = bucket.Limit(ctx)
+	s.Require().NoError(err)
+	state, err := backend.State(ctx)
+	s.Require().NoError(err)
+	s.Equal(int64(0), state.Available, "Tokens should be depleted after two takes")
+	time.Sleep(ttl + 1500*time.Millisecond)
+	state, err = backend.State(ctx)
+	s.Require().NoError(err)
+	s.True(state.Last == 0 && state.Available == 0, "State should be zero after expiry, got: %+v", state)
+}
+
+// TestTokenBucketMemcachedExpiryWithRaceCheck verifies Memcached TTL expiry for TokenBucketMemcached (race check enabled).
+func (s *LimitersTestSuite) TestTokenBucketMemcachedExpiryWithRaceCheck() {
+	ttl := time.Second
+	backend := l.NewTokenBucketMemcached(s.memcacheClient, uuid.New().String(), ttl, true)
+	bucket := l.NewTokenBucket(2, time.Second, l.NewLockNoop(), backend, l.NewSystemClock(), s.logger)
+	ctx := context.Background()
+	_, err := bucket.Limit(ctx)
+	s.Require().NoError(err)
+	_, err = bucket.Limit(ctx)
+	s.Require().NoError(err)
+	state, err := backend.State(ctx)
+	s.Require().NoError(err)
+	s.Equal(int64(0), state.Available, "Tokens should be depleted after two takes")
+	time.Sleep(ttl + 1500*time.Millisecond)
+	state, err = backend.State(ctx)
+	s.Require().NoError(err)
+	s.True(state.Last == 0 && state.Available == 0, "State should be zero after expiry, got: %+v", state)
+}
+
 // setTokenBucketStateInOldFormat is a test utility method for writing state in the old format to Redis.
 func setTokenBucketStateInOldFormat(ctx context.Context, cli *redis.Client, prefix string, state l.TokenBucketState, ttl time.Duration) error {
 	_, err := cli.TxPipelined(ctx, func(pipeliner redis.Pipeliner) error {
