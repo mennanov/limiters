@@ -65,10 +65,12 @@ func NewLockEtcd(cli *clientv3.Client, prefix string, logger Logger) *LockEtcd {
 // Lock creates a new session-based lock in etcd and locks it.
 func (l *LockEtcd) Lock(ctx context.Context) error {
 	var err error
+
 	l.session, err = concurrency.NewSession(l.cli, concurrency.WithTTL(1))
 	if err != nil {
 		return errors.Wrap(err, "failed to create an etcd session")
 	}
+
 	l.mu = concurrency.NewMutex(l.session, l.prefix)
 
 	return errors.Wrap(l.mu.Lock(ctx), "failed to lock a mutex in etcd")
@@ -77,7 +79,8 @@ func (l *LockEtcd) Lock(ctx context.Context) error {
 // Unlock unlocks the previously locked lock.
 func (l *LockEtcd) Unlock(ctx context.Context) error {
 	defer func() {
-		if err := l.session.Close(); err != nil {
+		err := l.session.Close()
+		if err != nil {
 			l.logger.Log(err)
 		}
 	}()
@@ -150,7 +153,8 @@ func (l *LockRedis) Lock(ctx context.Context) error {
 
 // Unlock unlocks the lock in Redis.
 func (l *LockRedis) Unlock(ctx context.Context) error {
-	if ok, err := l.mutex.UnlockContext(ctx); !ok || err != nil {
+	ok, err := l.mutex.UnlockContext(ctx)
+	if !ok || err != nil {
 		return errors.Wrap(err, "failed to unlock a mutex in redis")
 	}
 
@@ -217,10 +221,12 @@ var _ DistLocker = (*LockPostgreSQL)(nil)
 // Lock acquire an advisory lock in PostgreSQL.
 func (l *LockPostgreSQL) Lock(ctx context.Context) error {
 	var err error
+
 	l.tx, err = l.db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return err
 	}
+
 	_, err = l.tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock($1)", l.id)
 
 	return err

@@ -55,11 +55,11 @@ func CreateTestDynamoDBTable(ctx context.Context, client *dynamodb.Client) error
 
 	ctx, cancel := context.WithTimeout(ctx, time.Second*10)
 	defer cancel()
+
 	for {
 		resp, err := client.DescribeTable(ctx, &dynamodb.DescribeTableInput{
 			TableName: aws.String(testDynamoDBTableName),
 		})
-
 		if err == nil {
 			return errors.Wrap(err, "failed to describe test table")
 		}

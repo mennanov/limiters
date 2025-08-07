@@ -66,17 +66,23 @@ func (s *LimitersTestSuite) TestFixedWindowFakeClock() {
 		for name, bucket := range s.fixedWindows(testCase.capacity, testCase.rate, clock) {
 			s.Run(name, func() {
 				clock.reset()
+
 				miss := 0
+
 				for i := 0; i < testCase.requestCount; i++ {
 					// No pause for the first request.
 					if i > 0 {
 						clock.Sleep(testCase.requestRate)
 					}
-					if _, err := bucket.Limit(context.TODO()); err != nil {
+
+					_, err := bucket.Limit(context.TODO())
+					if err != nil {
 						s.Equal(l.ErrLimitExhausted, err)
+
 						miss++
 					}
 				}
+
 				s.Equal(testCase.missExpected, miss, testCase)
 			})
 		}
@@ -88,6 +94,7 @@ func (s *LimitersTestSuite) TestFixedWindowOverflow() {
 	for name, bucket := range s.fixedWindows(2, time.Second, clock) {
 		s.Run(name, func() {
 			clock.reset()
+
 			w, err := bucket.Limit(context.TODO())
 			s.Require().NoError(err)
 			s.Equal(time.Duration(0), w)
@@ -98,6 +105,7 @@ func (s *LimitersTestSuite) TestFixedWindowOverflow() {
 			s.Require().Equal(l.ErrLimitExhausted, err)
 			s.Equal(time.Second, w)
 			clock.Sleep(time.Second)
+
 			w, err = bucket.Limit(context.TODO())
 			s.Require().NoError(err)
 			s.Equal(time.Duration(0), w)
@@ -126,9 +134,11 @@ func BenchmarkFixedWindows(b *testing.B) {
 	s := new(LimitersTestSuite)
 	s.SetT(&testing.T{})
 	s.SetupSuite()
+
 	capacity := int64(1)
 	rate := time.Second
 	clock := newFakeClock()
+
 	windows := s.fixedWindows(capacity, rate, clock)
 	for name, window := range windows {
 		b.Run(name, func(b *testing.B) {
@@ -138,5 +148,6 @@ func BenchmarkFixedWindows(b *testing.B) {
 			}
 		})
 	}
+
 	s.TearDownSuite()
 }

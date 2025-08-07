@@ -66,6 +66,7 @@ func NewRegistry() *Registry {
 func (r *Registry) GetOrCreate(key string, value func() interface{}, ttl time.Duration, now time.Time) interface{} {
 	r.mx.Lock()
 	defer r.mx.Unlock()
+
 	item, ok := r.m[key]
 	if ok {
 		// Update the expiration time.
@@ -88,14 +89,18 @@ func (r *Registry) GetOrCreate(key string, value func() interface{}, ttl time.Du
 func (r *Registry) DeleteExpired(now time.Time) int {
 	r.mx.Lock()
 	defer r.mx.Unlock()
+
 	c := 0
+
 	for len(*r.pq) != 0 {
 		item := (*r.pq)[0]
 		if now.Before(item.exp) {
 			break
 		}
+
 		delete(r.m, item.key)
 		heap.Pop(r.pq)
+
 		c++
 	}
 
@@ -106,10 +111,12 @@ func (r *Registry) DeleteExpired(now time.Time) int {
 func (r *Registry) Delete(key string) {
 	r.mx.Lock()
 	defer r.mx.Unlock()
+
 	item, ok := r.m[key]
 	if !ok {
 		return
 	}
+
 	delete(r.m, key)
 	heap.Remove(r.pq, item.index)
 }
@@ -118,6 +125,7 @@ func (r *Registry) Delete(key string) {
 func (r *Registry) Exists(key string) bool {
 	r.mx.Lock()
 	defer r.mx.Unlock()
+
 	_, ok := r.m[key]
 
 	return ok

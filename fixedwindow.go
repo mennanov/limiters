@@ -54,21 +54,26 @@ func NewFixedWindow(capacity int64, rate time.Duration, fixedWindowIncrementer F
 func (f *FixedWindow) Limit(ctx context.Context) (time.Duration, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+
 	now := f.clock.Now()
+
 	window := now.Truncate(f.rate)
 	if f.window != window {
 		f.window = window
 		f.overflow = false
 	}
+
 	ttl := f.rate - now.Sub(window)
 	if f.overflow {
 		// If the window is already overflowed don't increment the counter.
 		return ttl, ErrLimitExhausted
 	}
+
 	c, err := f.backend.Increment(ctx, window, ttl)
 	if err != nil {
 		return 0, err
 	}
+
 	if c > f.capacity {
 		f.overflow = true
 
@@ -94,10 +99,12 @@ func NewFixedWindowInMemory() *FixedWindowInMemory {
 func (f *FixedWindowInMemory) Increment(ctx context.Context, window time.Time, _ time.Duration) (int64, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+
 	if window != f.window {
 		f.c = 0
 		f.window = window
 	}
+
 	f.c++
 
 	return f.c, ctx.Err()
@@ -117,11 +124,16 @@ func NewFixedWindowRedis(cli redis.UniversalClient, prefix string) *FixedWindowR
 
 // Increment increments the window's counter in Redis.
 func (f *FixedWindowRedis) Increment(ctx context.Context, window time.Time, ttl time.Duration) (int64, error) {
-	var incr *redis.IntCmd
-	var err error
+	var (
+		incr *redis.IntCmd
+		err  error
+	)
+
 	done := make(chan struct{})
+
 	go func() {
 		defer close(done)
+
 		_, err = f.cli.Pipelined(ctx, func(pipeliner redis.Pipeliner) error {
 			key := fmt.Sprintf("%d", window.UnixNano())
 			incr = pipeliner.Incr(ctx, redisKey(f.prefix, key))
@@ -157,12 +169,18 @@ func NewFixedWindowMemcached(cli *memcache.Client, prefix string) *FixedWindowMe
 
 // Increment increments the window's counter in Memcached.
 func (f *FixedWindowMemcached) Increment(ctx context.Context, window time.Time, ttl time.Duration) (int64, error) {
-	var newValue uint64
-	var err error
+	var (
+		newValue uint64
+		err      error
+	)
+
 	done := make(chan struct{})
+
 	go func() {
 		defer close(done)
+
 		key := fmt.Sprintf("%s:%d", f.prefix, window.UnixNano())
+
 		newValue, err = f.cli.Increment(key, 1)
 		if err != nil && errors.Is(err, memcache.ErrCacheMiss) {
 			newValue = 1
@@ -235,16 +253,21 @@ const (
 
 // Increment increments the window's counter in DynamoDB.
 func (f *FixedWindowDynamoDB) Increment(ctx context.Context, window time.Time, ttl time.Duration) (int64, error) {
-	var resp *dynamodb.UpdateItemOutput
-	var err error
+	var (
+		resp *dynamodb.UpdateItemOutput
+		err  error
+	)
 
 	done := make(chan struct{})
+
 	go func() {
 		defer close(done)
+
 		partitionKey := f.partitionKey
 		if key, ok := ctx.Value(fixedWindowDynamoDBPartitionKey).(string); ok {
 			partitionKey = key
 		}
+
 		resp, err = f.client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 			Key: map[string]types.AttributeValue{
 				f.tableProps.PartitionKeyName: &types.AttributeValueMemberS{Value: partitionKey},
@@ -276,6 +299,7 @@ func (f *FixedWindowDynamoDB) Increment(ctx context.Context, window time.Time, t
 	}
 
 	var count float64
+
 	err = attributevalue.Unmarshal(resp.Attributes[dynamodbWindowCountKey], &count)
 	if err != nil {
 		return 0, errors.Wrap(err, "unmarshal of dynamodb attribute value failed")
