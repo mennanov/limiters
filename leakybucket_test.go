@@ -16,6 +16,7 @@ import (
 // leakyBuckets returns all the possible leakyBuckets combinations.
 func (s *LimitersTestSuite) leakyBuckets(capacity int64, rate time.Duration, clock l.Clock) map[string]*l.LeakyBucket {
 	buckets := make(map[string]*l.LeakyBucket)
+
 	for lockerName, locker := range s.lockers(true) {
 		for backendName, backend := range s.leakyBucketBackends() {
 			buckets[lockerName+":"+backendName] = l.NewLeakyBucket(capacity, rate, locker, backend, clock, s.logger)
@@ -46,32 +47,43 @@ func (s *LimitersTestSuite) leakyBucketBackends() map[string]l.LeakyBucketStateB
 func (s *LimitersTestSuite) TestLeakyBucketRealClock() {
 	capacity := int64(10)
 	rate := time.Millisecond * 10
+
 	clock := l.NewSystemClock()
 	for _, requestRate := range []time.Duration{rate / 2} {
 		for name, bucket := range s.leakyBuckets(capacity, rate, clock) {
 			s.Run(name, func() {
 				wg := sync.WaitGroup{}
 				mu := sync.Mutex{}
+
 				var totalWait time.Duration
+
 				for i := int64(0); i < capacity; i++ {
 					// No pause for the first request.
 					if i > 0 {
 						clock.Sleep(requestRate)
 					}
+
 					wg.Add(1)
+
 					go func(bucket *l.LeakyBucket) {
 						defer wg.Done()
+
 						wait, err := bucket.Limit(context.TODO())
 						s.Require().NoError(err)
+
 						if wait > 0 {
 							mu.Lock()
+
 							totalWait += wait
+
 							mu.Unlock()
 							clock.Sleep(wait)
 						}
 					}(bucket)
 				}
+
 				wg.Wait()
+
 				expectedWait := time.Duration(0)
 				if rate > requestRate {
 					expectedWait = time.Duration(float64(rate-requestRate) * float64(capacity-1) / 2 * float64(capacity))
@@ -89,25 +101,30 @@ func (s *LimitersTestSuite) TestLeakyBucketRealClock() {
 func (s *LimitersTestSuite) TestLeakyBucketFakeClock() {
 	capacity := int64(10)
 	rate := time.Millisecond * 100
+
 	clock := newFakeClock()
 	for _, requestRate := range []time.Duration{rate * 2, rate, rate / 2, rate / 3, rate / 4, 0} {
 		for name, bucket := range s.leakyBuckets(capacity, rate, clock) {
 			s.Run(name, func() {
 				clock.reset()
 				start := clock.Now()
+
 				for i := int64(0); i < capacity; i++ {
 					// No pause for the first request.
 					if i > 0 {
 						clock.Sleep(requestRate)
 					}
+
 					wait, err := bucket.Limit(context.TODO())
 					s.Require().NoError(err)
 					clock.Sleep(wait)
 				}
+
 				interval := rate
 				if requestRate > rate {
 					interval = requestRate
 				}
+
 				s.Equal(interval*time.Duration(capacity-1), clock.Now().Sub(start), "request rate: %d, bucket: %v", requestRate, bucket)
 			})
 		}
@@ -117,6 +134,7 @@ func (s *LimitersTestSuite) TestLeakyBucketFakeClock() {
 func (s *LimitersTestSuite) TestLeakyBucketOverflow() {
 	rate := time.Second
 	capacity := int64(2)
+
 	clock := newFakeClock()
 	for name, bucket := range s.leakyBuckets(capacity, rate, clock) {
 		s.Run(name, func() {
@@ -146,6 +164,7 @@ func (s *LimitersTestSuite) TestLeakyBucketOverflow() {
 func (s *LimitersTestSuite) TestLeakyBucketReset() {
 	rate := time.Second
 	capacity := int64(2)
+
 	clock := newFakeClock()
 	for name, bucket := range s.leakyBuckets(capacity, rate, clock) {
 		s.Run(name, func() {
@@ -187,6 +206,7 @@ func (s *LimitersTestSuite) TestLeakyBucketMemcachedExpiry() {
 	s.Require().NoError(err)
 	s.NotEqual(int64(0), state.Last, "Last should be set after token takes")
 	time.Sleep(ttl + 1500*time.Millisecond)
+
 	state, err = backend.State(ctx)
 	s.Require().NoError(err)
 	s.Equal(int64(0), state.Last, "State should be zero after expiry, got: %+v", state)
@@ -206,6 +226,7 @@ func (s *LimitersTestSuite) TestLeakyBucketMemcachedExpiryWithRaceCheck() {
 	s.Require().NoError(err)
 	s.NotEqual(int64(0), state.Last, "Last should be set after token takes")
 	time.Sleep(ttl + 1500*time.Millisecond)
+
 	state, err = backend.State(ctx)
 	s.Require().NoError(err)
 	s.Equal(int64(0), state.Last, "State should be zero after expiry, got: %+v", state)
@@ -225,9 +246,11 @@ func BenchmarkLeakyBuckets(b *testing.B) {
 	s := new(LimitersTestSuite)
 	s.SetT(&testing.T{})
 	s.SetupSuite()
+
 	capacity := int64(1)
 	rate := time.Second
 	clock := newFakeClock()
+
 	buckets := s.leakyBuckets(capacity, rate, clock)
 	for name, bucket := range buckets {
 		b.Run(name, func(b *testing.B) {
@@ -237,13 +260,15 @@ func BenchmarkLeakyBuckets(b *testing.B) {
 			}
 		})
 	}
+
 	s.TearDownSuite()
 }
 
 // setStateInOldFormat is a test utility method for writing state in the old format to Redis.
 func setStateInOldFormat(ctx context.Context, cli *redis.Client, prefix string, state l.LeakyBucketState, ttl time.Duration) error {
 	_, err := cli.TxPipelined(ctx, func(pipeliner redis.Pipeliner) error {
-		if err := pipeliner.Set(ctx, fmt.Sprintf("{%s}last", prefix), state.Last, ttl).Err(); err != nil {
+		err := pipeliner.Set(ctx, fmt.Sprintf("{%s}last", prefix), state.Last, ttl).Err()
+		if err != nil {
 			return err
 		}
 

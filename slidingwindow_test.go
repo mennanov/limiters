@@ -297,8 +297,10 @@ func (s *LimitersTestSuite) TestSlidingWindowOverflowAndWait() {
 		for name, bucket := range s.slidingWindows(testCase.capacity, testCase.rate, clock, testCase.epsilon) {
 			s.Run(name, func() {
 				clock.reset()
+
 				for i := 0; i < testCase.requests; i++ {
 					w, err := bucket.Limit(context.TODO())
+
 					s.Require().LessOrEqual(i, len(testCase.results)-1)
 					s.InDelta(testCase.results[i].w, w, testCase.delta, i)
 					s.Equal(testCase.results[i].e, err, i)
@@ -311,6 +313,7 @@ func (s *LimitersTestSuite) TestSlidingWindowOverflowAndWait() {
 
 func (s *LimitersTestSuite) TestSlidingWindowOverflowAndNoWait() {
 	capacity := int64(3)
+
 	clock := newFakeClock()
 	for name, bucket := range s.slidingWindows(capacity, time.Second, clock, 1e-9) {
 		s.Run(name, func() {
@@ -327,12 +330,14 @@ func (s *LimitersTestSuite) TestSlidingWindowOverflowAndNoWait() {
 			// The next request will be the first one to be rejected.
 			w, err := bucket.Limit(context.TODO())
 			s.Require().Equal(l.ErrLimitExhausted, err)
+
 			expected := clock.Now().Add(w)
 
 			// Send a few more requests, all of them should be told to come back at the same time.
 			for i := int64(0); i < capacity; i++ {
 				w, err = bucket.Limit(context.TODO())
 				s.Require().Equal(l.ErrLimitExhausted, err)
+
 				actual := clock.Now().Add(w)
 				s.Require().Equal(expected, actual, i)
 				clock.Sleep(time.Millisecond)
@@ -340,6 +345,7 @@ func (s *LimitersTestSuite) TestSlidingWindowOverflowAndNoWait() {
 
 			// Wait until it is ready.
 			clock.Sleep(expected.Sub(clock.Now()))
+
 			w, err = bucket.Limit(context.TODO())
 			s.Require().NoError(err)
 			s.Require().Equal(time.Duration(0), w)
@@ -351,10 +357,12 @@ func BenchmarkSlidingWindows(b *testing.B) {
 	s := new(LimitersTestSuite)
 	s.SetT(&testing.T{})
 	s.SetupSuite()
+
 	capacity := int64(1)
 	rate := time.Second
 	clock := newFakeClock()
 	epsilon := 1e-9
+
 	windows := s.slidingWindows(capacity, rate, clock, epsilon)
 	for name, window := range windows {
 		b.Run(name, func(b *testing.B) {
@@ -364,5 +372,6 @@ func BenchmarkSlidingWindows(b *testing.B) {
 			}
 		})
 	}
+
 	s.TearDownSuite()
 }

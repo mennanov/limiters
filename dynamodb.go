@@ -116,12 +116,16 @@ func dynamoDBputItem(ctx context.Context, client *dynamodb.Client, input *dynamo
 func dynamoDBGetItem(ctx context.Context, client *dynamodb.Client, input *dynamodb.GetItemInput) (*dynamodb.GetItemOutput, error) {
 	input.ConsistentRead = aws.Bool(true)
 
-	var resp *dynamodb.GetItemOutput
-	var err error
+	var (
+		resp *dynamodb.GetItemOutput
+		err  error
+	)
 
 	done := make(chan struct{})
+
 	go func() {
 		defer close(done)
+
 		resp, err = client.GetItem(ctx, input)
 	}()
 
