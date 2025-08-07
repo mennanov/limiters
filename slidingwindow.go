@@ -57,6 +57,7 @@ func (s *SlidingWindow) Limit(ctx context.Context) (time.Duration, error) {
 	currWindow := now.Truncate(s.rate)
 	prevWindow := currWindow.Add(-s.rate)
 	ttl := s.rate - now.Sub(currWindow)
+
 	prev, curr, err := s.backend.Increment(ctx, prevWindow, currWindow, ttl+s.rate)
 	if err != nil {
 		return 0, err
@@ -100,6 +101,7 @@ func NewSlidingWindowInMemory() *SlidingWindowInMemory {
 func (s *SlidingWindowInMemory) Increment(ctx context.Context, prev, curr time.Time, _ time.Duration) (int64, int64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	if curr != s.currW {
 		if prev.Equal(s.currW) {
 			s.prevW = s.currW
@@ -108,9 +110,11 @@ func (s *SlidingWindowInMemory) Increment(ctx context.Context, prev, curr time.T
 			s.prevW = time.Time{}
 			s.prevC = 0
 		}
+
 		s.currW = curr
 		s.currC = 0
 	}
+
 	s.currC++
 
 	return s.prevC, s.currC, ctx.Err()
@@ -130,12 +134,17 @@ func NewSlidingWindowRedis(cli redis.UniversalClient, prefix string) *SlidingWin
 // Increment increments the current window's counter in Redis and returns the number of requests in the previous window
 // and the current one.
 func (s *SlidingWindowRedis) Increment(ctx context.Context, prev, curr time.Time, ttl time.Duration) (int64, int64, error) {
-	var incr *redis.IntCmd
-	var prevCountCmd *redis.StringCmd
-	var err error
+	var (
+		incr         *redis.IntCmd
+		prevCountCmd *redis.StringCmd
+		err          error
+	)
+
 	done := make(chan struct{})
+
 	go func() {
 		defer close(done)
+
 		_, err = s.cli.Pipelined(ctx, func(pipeliner redis.Pipeliner) error {
 			currKey := fmt.Sprintf("%d", curr.UnixNano())
 			incr = pipeliner.Incr(ctx, redisKey(s.prefix, currKey))
@@ -147,6 +156,7 @@ func (s *SlidingWindowRedis) Increment(ctx context.Context, prev, curr time.Time
 	}()
 
 	var prevCount int64
+
 	select {
 	case <-done:
 		if errors.Is(err, redis.TxFailedErr) {
@@ -182,15 +192,21 @@ func NewSlidingWindowMemcached(cli *memcache.Client, prefix string) *SlidingWind
 // Increment increments the current window's counter in Memcached and returns the number of requests in the previous window
 // and the current one.
 func (s *SlidingWindowMemcached) Increment(ctx context.Context, prev, curr time.Time, ttl time.Duration) (int64, int64, error) {
-	var prevCount uint64
-	var currCount uint64
-	var err error
+	var (
+		prevCount uint64
+		currCount uint64
+		err       error
+	)
+
 	done := make(chan struct{})
+
 	go func() {
 		defer close(done)
 
 		var item *memcache.Item
+
 		prevKey := fmt.Sprintf("%s:%d", s.prefix, prev.UnixNano())
+
 		item, err = s.cli.Get(prevKey)
 		if err != nil {
 			if errors.Is(err, memcache.ErrCacheMiss) {
@@ -207,6 +223,7 @@ func (s *SlidingWindowMemcached) Increment(ctx context.Context, prev, curr time.
 		}
 
 		currKey := fmt.Sprintf("%s:%d", s.prefix, curr.UnixNano())
+
 		currCount, err = s.cli.Increment(currKey, 1)
 		if err != nil && errors.Is(err, memcache.ErrCacheMiss) {
 			currCount = 1
@@ -262,15 +279,21 @@ func (s *SlidingWindowDynamoDB) Increment(ctx context.Context, prev, curr time.T
 	wg.Add(2)
 
 	done := make(chan struct{})
+
 	go func() {
 		defer close(done)
+
 		wg.Wait()
 	}()
 
-	var currentCount int64
-	var currentErr error
+	var (
+		currentCount int64
+		currentErr   error
+	)
+
 	go func() {
 		defer wg.Done()
+
 		resp, err := s.client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 			Key: map[string]types.AttributeValue{
 				s.tableProps.PartitionKeyName: &types.AttributeValueMemberS{Value: s.partitionKey},
@@ -296,6 +319,7 @@ func (s *SlidingWindowDynamoDB) Increment(ctx context.Context, prev, curr time.T
 		}
 
 		var tmp float64
+
 		err = attributevalue.Unmarshal(resp.Attributes[dynamodbWindowCountKey], &tmp)
 		if err != nil {
 			currentErr = errors.Wrap(err, "unmarshal of dynamodb attribute value failed")
@@ -306,10 +330,14 @@ func (s *SlidingWindowDynamoDB) Increment(ctx context.Context, prev, curr time.T
 		currentCount = int64(tmp)
 	}()
 
-	var priorCount int64
-	var priorErr error
+	var (
+		priorCount int64
+		priorErr   error
+	)
+
 	go func() {
 		defer wg.Done()
+
 		resp, err := s.client.GetItem(ctx, &dynamodb.GetItemInput{
 			TableName: aws.String(s.tableProps.TableName),
 			Key: map[string]types.AttributeValue{
@@ -331,6 +359,7 @@ func (s *SlidingWindowDynamoDB) Increment(ctx context.Context, prev, curr time.T
 		}
 
 		var count float64
+
 		err = attributevalue.Unmarshal(resp.Item[dynamodbWindowCountKey], &count)
 		if err != nil {
 			priorCount, priorErr = 0, errors.Wrap(err, "unmarshal of dynamodb attribute value failed")
@@ -378,13 +407,18 @@ func (s *SlidingWindowCosmosDB) Increment(ctx context.Context, prev, curr time.T
 	wg.Add(2)
 
 	done := make(chan struct{})
+
 	go func() {
 		defer close(done)
+
 		wg.Wait()
 	}()
 
-	var currentCount int64
-	var currentErr error
+	var (
+		currentCount int64
+		currentErr   error
+	)
+
 	go func() {
 		defer wg.Done()
 
@@ -410,6 +444,7 @@ func (s *SlidingWindowCosmosDB) Increment(ctx context.Context, prev, curr time.T
 
 				return
 			}
+
 			currentCount = tmp.Count
 
 			return
@@ -442,12 +477,16 @@ func (s *SlidingWindowCosmosDB) Increment(ctx context.Context, prev, curr time.T
 		currentCount = tmp.Count
 	}()
 
-	var priorCount int64
-	var priorErr error
+	var (
+		priorCount int64
+		priorErr   error
+	)
+
 	go func() {
 		defer wg.Done()
 
 		id := strconv.FormatInt(prev.UnixNano(), 10)
+
 		resp, err := s.client.ReadItem(ctx, azcosmos.NewPartitionKey().AppendString(s.partitionKey), id, &azcosmos.ItemOptions{})
 		if err != nil {
 			var azerr *azcore.ResponseError
@@ -456,12 +495,14 @@ func (s *SlidingWindowCosmosDB) Increment(ctx context.Context, prev, curr time.T
 
 				return
 			}
+
 			priorErr = errors.Wrap(err, "cosmos get item prior failed")
 
 			return
 		}
 
 		var tmp cosmosItem
+
 		err = json.Unmarshal(resp.Value, &tmp)
 		if err != nil {
 			priorErr = errors.Wrap(err, "unmarshal of cosmos value prior failed")

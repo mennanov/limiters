@@ -25,7 +25,9 @@ import (
 
 func Example_ipGRPCLimiter() {
 	// Set up a gRPC server.
-	lis, err := net.Listen("tcp", examples.Port)
+	lc := net.ListenConfig{}
+
+	lis, err := lc.Listen(context.Background(), "tcp", examples.Port)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
@@ -44,6 +46,7 @@ func Example_ipGRPCLimiter() {
 		Addr: os.Getenv("REDIS_ADDR"),
 	})
 	defer redisClient.Close()
+
 	logger := limiters.NewStdLogger()
 	// Registry is needed to keep track of previously created limiters. It can remove the expired limiters to free up
 	// memory.
@@ -52,6 +55,7 @@ func Example_ipGRPCLimiter() {
 	// the registry).
 	rate := time.Second * 3
 	clock := limiters.NewSystemClock()
+
 	go func() {
 		// Garbage collect the old limiters to prevent memory leaks.
 		for {
@@ -64,9 +68,12 @@ func Example_ipGRPCLimiter() {
 	s := grpc.NewServer(grpc.UnaryInterceptor(
 		func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 			p, ok := peer.FromContext(ctx)
+
 			var ip string
+
 			if !ok {
 				log.Println("no peer info available")
+
 				ip = "unknown"
 			} else {
 				ip = p.Addr.String()
@@ -84,6 +91,7 @@ func Example_ipGRPCLimiter() {
 						rate, false),
 					clock, logger)
 			}, rate, clock.Now())
+
 			w, err := bucket.(*limiters.TokenBucket).Limit(ctx)
 			if errors.Is(err, limiters.ErrLimitExhausted) {
 				return nil, status.Errorf(codes.ResourceExhausted, "try again later in %s", w)
@@ -98,12 +106,15 @@ func Example_ipGRPCLimiter() {
 		}))
 
 	pb.RegisterGreeterServer(s, &examples.Server{})
+
 	go func() {
 		// Start serving.
-		if err = s.Serve(lis); err != nil {
+		err = s.Serve(lis)
+		if err != nil {
 			log.Fatalf("failed to serve: %v", err)
 		}
 	}()
+
 	defer s.GracefulStop()
 
 	// Set up a client connection to the server.
@@ -112,25 +123,32 @@ func Example_ipGRPCLimiter() {
 		log.Fatalf("did not connect: %v", err)
 	}
 	defer conn.Close()
+
 	c := pb.NewGreeterClient(conn)
 
 	// Contact the server and print out its response.
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
+
 	r, err := c.SayHello(ctx, &pb.HelloRequest{Name: "Alice"})
 	if err != nil {
 		log.Fatalf("could not greet: %v", err)
 	}
+
 	fmt.Println(r.GetMessage())
+
 	r, err = c.SayHello(ctx, &pb.HelloRequest{Name: "Bob"})
 	if err != nil {
 		log.Fatalf("could not greet: %v", err)
 	}
+
 	fmt.Println(r.GetMessage())
+
 	_, err = c.SayHello(ctx, &pb.HelloRequest{Name: "Peter"})
 	if err == nil {
 		log.Fatal("error expected, but got nil")
 	}
+
 	fmt.Println(err)
 	// Output: Hello Alice
 	// Hello Bob
