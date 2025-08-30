@@ -74,13 +74,13 @@ func NewTokenBucket(capacity int64, refillRate time.Duration, locker DistLocker,
 	}
 }
 
-// TakeMinMax takes between minTokens and maxTokens tokens from the bucket, depending on availability.
+// takeMinMax takes between minTokens and maxTokens tokens from the bucket, depending on availability.
 //
 // It returns the number of tokens actually taken, zero duration, and nil error if at least minTokens are available.
 //
 // If fewer than minTokens are available, it returns 0 taken, duration indicating how long to wait before retrying, and ErrLimitExhausted error.
 // The wait duration is computed based on the refill rate and the deficit to reach minTokens.
-func (t *TokenBucket) TakeMinMax(ctx context.Context, minTokens, maxTokens int64) (int64, time.Duration, error) {
+func (t *TokenBucket) takeMinMax(ctx context.Context, minTokens, maxTokens int64) (int64, time.Duration, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if err := t.locker.Lock(ctx); err != nil {
@@ -132,11 +132,11 @@ func (t *TokenBucket) TakeMinMax(ctx context.Context, minTokens, maxTokens int64
 	return tokens, 0, nil
 }
 
-// TakeMax takes as many tokens as it can from the bucket.
+// TakeMax takes up to maxTokens tokens from the bucket, depending on availability.
 //
-// It returns a zero duration and a nil error if the bucket has sufficient amount of tokens.
+// It returns the number of tokens actually taken, and error in case internal action will fail.
 func (t *TokenBucket) TakeMax(ctx context.Context, tokens int64) (int64, error) {
-	taken, _, err := t.TakeMinMax(ctx, 0, tokens)
+	taken, _, err := t.takeMinMax(ctx, 0, tokens)
 
 	return taken, err
 }
@@ -148,7 +148,7 @@ func (t *TokenBucket) TakeMax(ctx context.Context, tokens int64) (int64, error) 
 // It returns ErrLimitExhausted if the amount of available tokens is less than requested. In this case the returned
 // duration is the amount of time to wait to retry the request.
 func (t *TokenBucket) Take(ctx context.Context, tokens int64) (time.Duration, error) {
-	_, duration, err := t.TakeMinMax(ctx, tokens, tokens)
+	_, duration, err := t.takeMinMax(ctx, tokens, tokens)
 
 	return duration, err
 }
