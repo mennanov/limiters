@@ -190,7 +190,7 @@ func (s *LimitersTestSuite) TestTokenTakeMaxOverflow() {
 			// Take max, as it's below capacity.
 			taken, err := bucket.TakeMax(context.TODO(), 2)
 			s.Require().NoError(err)
-			s.Equal(int64(4), taken)
+			s.Equal(int64(2), taken)
 			// Take as much as it's available
 			taken, err = bucket.TakeMax(context.TODO(), 2)
 			s.Require().NoError(err)
