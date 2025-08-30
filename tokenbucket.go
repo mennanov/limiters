@@ -78,7 +78,7 @@ func NewTokenBucket(capacity int64, refillRate time.Duration, locker DistLocker,
 //
 // It returns the number of tokens actually taken, zero duration, and nil error if at least minTokens are available.
 //
-// If fewer than minTokens are available, it returns 0 taken, ErrLimitExhausted, and a duration indicating how long to wait before retrying.
+// If fewer than minTokens are available, it returns 0 taken, duration indicating how long to wait before retrying, and ErrLimitExhausted error.
 // The wait duration is computed based on the refill rate and the deficit to reach minTokens.
 func (t *TokenBucket) TakeMinMax(ctx context.Context, minTokens, maxTokens int64) (int64, time.Duration, error) {
 	t.mu.Lock()
@@ -117,7 +117,7 @@ func (t *TokenBucket) TakeMinMax(ctx context.Context, minTokens, maxTokens int64
 		return 0, t.refillRate * time.Duration(minTokens-state.Available), ErrLimitExhausted
 	}
 
-	// Take as many tokens between <minimum, tokens> as possible.
+	// Take as many tokens between minTokens and maxTokens as possible.
 	tokens := maxTokens
 	if tokens > state.Available {
 		tokens = state.Available
