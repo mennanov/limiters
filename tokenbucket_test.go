@@ -181,6 +181,37 @@ func (s *LimitersTestSuite) TestTokenBucketOverflow() {
 	}
 }
 
+func (s *LimitersTestSuite) TestTokenMinMaxOverflow() {
+	clock := newFakeClock()
+	rate := time.Second
+	for name, bucket := range s.tokenBuckets(6, rate, clock) {
+		s.Run(name, func() {
+			clock.reset()
+			// Take max, as it's below capacity.
+			taken, wait, err := bucket.TakeMinMax(context.TODO(), 2, 4)
+			s.Require().NoError(err)
+			s.Equal(int64(4), taken)
+			s.Equal(time.Duration(0), wait)
+			// Take the minimum, as there is no more left.
+			taken, wait, err = bucket.TakeMinMax(context.TODO(), 2, 4)
+			s.Require().NoError(err)
+			s.Equal(time.Duration(0), wait)
+			s.Equal(int64(2), taken)
+			// Now it is not able to take the minimum.
+			taken, wait, err = bucket.TakeMinMax(context.TODO(), 2, 4)
+			s.Require().Equal(l.ErrLimitExhausted, err)
+			s.Equal(rate*2, wait)
+			s.Equal(int64(0), taken)
+			clock.Sleep(wait)
+			// Retry the last call.
+			taken, wait, err = bucket.TakeMinMax(context.TODO(), 2, 4)
+			s.Require().NoError(err)
+			s.Equal(time.Duration(0), wait)
+			s.Equal(int64(2), taken)
+		})
+	}
+}
+
 func (s *LimitersTestSuite) TestTokenBucketReset() {
 	clock := newFakeClock()
 	rate := 100 * time.Millisecond
