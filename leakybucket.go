@@ -202,6 +202,10 @@ func (l *LeakyBucketEtcd) State(ctx context.Context) (LeakyBucketState, error) {
 	}
 	state := LeakyBucketState{}
 	parsed := 0
+	if l.ttl == 0 {
+		// Ignore lease when there is no expiration
+		parsed |= 2
+	}
 	var v int64
 	for _, kv := range r.Kvs {
 		switch string(kv.Key) {
@@ -243,23 +247,33 @@ func (l *LeakyBucketEtcd) createLease(ctx context.Context) error {
 
 // save saves the state to etcd using the existing lease.
 func (l *LeakyBucketEtcd) save(ctx context.Context, state LeakyBucketState) error {
+	var opts []clientv3.OpOption
+	if l.ttl > 0 {
+		opts = append(opts, clientv3.WithLease(l.leaseID))
+	}
 	if !l.raceCheck {
-		if _, err := l.cli.Txn(ctx).Then(
-			clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBLast), fmt.Sprintf("%d", state.Last), clientv3.WithLease(l.leaseID)),
-			clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBLease), fmt.Sprintf("%d", l.leaseID), clientv3.WithLease(l.leaseID)),
-		).Commit(); err != nil {
+		ops := []clientv3.Op{
+			clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBLast), fmt.Sprintf("%d", state.Last), opts...),
+		}
+		if l.ttl > 0 {
+			ops = append(ops, clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBLease), fmt.Sprintf("%d", l.leaseID), opts...))
+		}
+		if _, err := l.cli.Txn(ctx).Then(ops...).Commit(); err != nil {
 			return errors.Wrap(err, "failed to commit a transaction to etcd")
 		}
 
 		return nil
 	}
+	ops := []clientv3.Op{
+		clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBLast), fmt.Sprintf("%d", state.Last), opts...),
+	}
+	if l.ttl > 0 {
+		ops = append(ops, clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBLease), fmt.Sprintf("%d", l.leaseID), opts...))
+	}
 	// Put the keys only if they have not been modified since the most recent read.
 	r, err := l.cli.Txn(ctx).If(
 		clientv3.Compare(clientv3.Version(etcdKey(l.prefix, etcdKeyLBLast)), ">", l.lastVersion),
-	).Else(
-		clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBLast), fmt.Sprintf("%d", state.Last), clientv3.WithLease(l.leaseID)),
-		clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBLease), fmt.Sprintf("%d", l.leaseID), clientv3.WithLease(l.leaseID)),
-	).Commit()
+	).Else(ops...).Commit()
 	if err != nil {
 		return errors.Wrap(err, "failed to commit a transaction to etcd")
 	}
@@ -273,6 +287,10 @@ func (l *LeakyBucketEtcd) save(ctx context.Context, state LeakyBucketState) erro
 
 // SetState updates the state of the bucket in etcd.
 func (l *LeakyBucketEtcd) SetState(ctx context.Context, state LeakyBucketState) error {
+	if l.ttl == 0 {
+		// Avoid maintaining the lease when it has no TTL
+		return l.save(ctx, state)
+	}
 	if l.leaseID == 0 {
 		// Lease does not exist, create one.
 		if err := l.createLease(ctx); err != nil {
@@ -591,7 +609,9 @@ func (t *LeakyBucketMemcached) SetState(ctx context.Context, state LeakyBucketSt
 	var b bytes.Buffer
 	stateWithTTL := leakyBucketStateWithExpirationTime{
 		LeakyBucketState: state,
-		ExpiresAt:        time.Now().Add(t.ttl).UnixMilli(),
+	}
+	if t.ttl > 0 {
+		stateWithTTL.ExpiresAt = time.Now().Add(t.ttl).UnixMilli()
 	}
 	err = gob.NewEncoder(&b).Encode(stateWithTTL)
 	if err != nil {
@@ -733,7 +753,9 @@ func (t *LeakyBucketDynamoDB) getPutItemInputFromState(state LeakyBucketState) *
 
 	item[dynamoDBBucketLastKey] = &types.AttributeValueMemberN{Value: strconv.FormatInt(state.Last, 10)}
 	item[dynamoDBBucketVersionKey] = &types.AttributeValueMemberN{Value: strconv.FormatInt(t.latestVersion+1, 10)}
-	item[t.tableProps.TTLFieldName] = &types.AttributeValueMemberN{Value: strconv.FormatInt(time.Now().Add(t.ttl).Unix(), 10)}
+	if t.ttl > 0 {
+		item[t.tableProps.TTLFieldName] = &types.AttributeValueMemberN{Value: strconv.FormatInt(time.Now().Add(t.ttl).Unix(), 10)}
+	}
 
 	input := &dynamodb.PutItemInput{
 		TableName: &t.tableProps.TableName,
@@ -826,7 +848,7 @@ func (t *LeakyBucketCosmosDB) State(ctx context.Context) (LeakyBucketState, erro
 		return LeakyBucketState{}, errors.Wrap(err, "failed to decode state from Cosmos DB")
 	}
 
-	if time.Now().Unix() > item.TTL {
+	if item.TTL > 0 && time.Now().Unix() > item.TTL {
 		return LeakyBucketState{}, nil
 	}
 
@@ -846,7 +868,9 @@ func (t *LeakyBucketCosmosDB) SetState(ctx context.Context, state LeakyBucketSta
 		PartitionKey: t.partitionKey,
 		State:        state,
 		Version:      t.latestVersion + 1,
-		TTL:          time.Now().Add(t.ttl).Unix(),
+	}
+	if t.ttl > 0 {
+		item.TTL = time.Now().Add(t.ttl).Unix()
 	}
 
 	value, err := json.Marshal(item)
