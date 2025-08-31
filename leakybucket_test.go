@@ -14,10 +14,10 @@ import (
 )
 
 // leakyBuckets returns all the possible leakyBuckets combinations.
-func (s *LimitersTestSuite) leakyBuckets(capacity int64, rate time.Duration, clock l.Clock) map[string]*l.LeakyBucket {
+func (s *LimitersTestSuite) leakyBuckets(capacity int64, rate, ttl time.Duration, clock l.Clock) map[string]*l.LeakyBucket {
 	buckets := make(map[string]*l.LeakyBucket)
 	for lockerName, locker := range s.lockers(true) {
-		for backendName, backend := range s.leakyBucketBackends() {
+		for backendName, backend := range s.leakyBucketBackends(ttl) {
 			buckets[lockerName+":"+backendName] = l.NewLeakyBucket(capacity, rate, locker, backend, clock, s.logger)
 		}
 	}
@@ -25,21 +25,21 @@ func (s *LimitersTestSuite) leakyBuckets(capacity int64, rate time.Duration, clo
 	return buckets
 }
 
-func (s *LimitersTestSuite) leakyBucketBackends() map[string]l.LeakyBucketStateBackend {
+func (s *LimitersTestSuite) leakyBucketBackends(ttl time.Duration) map[string]l.LeakyBucketStateBackend {
 	return map[string]l.LeakyBucketStateBackend{
 		"LeakyBucketInMemory":                  l.NewLeakyBucketInMemory(),
-		"LeakyBucketEtcdNoRaceCheck":           l.NewLeakyBucketEtcd(s.etcdClient, uuid.New().String(), time.Second, false),
-		"LeakyBucketEtcdWithRaceCheck":         l.NewLeakyBucketEtcd(s.etcdClient, uuid.New().String(), time.Second, true),
-		"LeakyBucketRedisNoRaceCheck":          l.NewLeakyBucketRedis(s.redisClient, uuid.New().String(), time.Second, false),
-		"LeakyBucketRedisWithRaceCheck":        l.NewLeakyBucketRedis(s.redisClient, uuid.New().String(), time.Second, true),
-		"LeakyBucketRedisClusterNoRaceCheck":   l.NewLeakyBucketRedis(s.redisClusterClient, uuid.New().String(), time.Second, false),
-		"LeakyBucketRedisClusterWithRaceCheck": l.NewLeakyBucketRedis(s.redisClusterClient, uuid.New().String(), time.Second, true),
-		"LeakyBucketMemcachedNoRaceCheck":      l.NewLeakyBucketMemcached(s.memcacheClient, uuid.New().String(), time.Second, false),
-		"LeakyBucketMemcachedWithRaceCheck":    l.NewLeakyBucketMemcached(s.memcacheClient, uuid.New().String(), time.Second, true),
-		"LeakyBucketDynamoDBNoRaceCheck":       l.NewLeakyBucketDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps, time.Second, false),
-		"LeakyBucketDynamoDBWithRaceCheck":     l.NewLeakyBucketDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps, time.Second, true),
-		"LeakyBucketCosmosDBNoRaceCheck":       l.NewLeakyBucketCosmosDB(s.cosmosContainerClient, uuid.New().String(), time.Second, false),
-		"LeakyBucketCosmosDBWithRaceCheck":     l.NewLeakyBucketCosmosDB(s.cosmosContainerClient, uuid.New().String(), time.Second, true),
+		"LeakyBucketEtcdNoRaceCheck":           l.NewLeakyBucketEtcd(s.etcdClient, uuid.New().String(), ttl, false),
+		"LeakyBucketEtcdWithRaceCheck":         l.NewLeakyBucketEtcd(s.etcdClient, uuid.New().String(), ttl, true),
+		"LeakyBucketRedisNoRaceCheck":          l.NewLeakyBucketRedis(s.redisClient, uuid.New().String(), ttl, false),
+		"LeakyBucketRedisWithRaceCheck":        l.NewLeakyBucketRedis(s.redisClient, uuid.New().String(), ttl, true),
+		"LeakyBucketRedisClusterNoRaceCheck":   l.NewLeakyBucketRedis(s.redisClusterClient, uuid.New().String(), ttl, false),
+		"LeakyBucketRedisClusterWithRaceCheck": l.NewLeakyBucketRedis(s.redisClusterClient, uuid.New().String(), ttl, true),
+		"LeakyBucketMemcachedNoRaceCheck":      l.NewLeakyBucketMemcached(s.memcacheClient, uuid.New().String(), ttl, false),
+		"LeakyBucketMemcachedWithRaceCheck":    l.NewLeakyBucketMemcached(s.memcacheClient, uuid.New().String(), ttl, true),
+		"LeakyBucketDynamoDBNoRaceCheck":       l.NewLeakyBucketDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps, ttl, false),
+		"LeakyBucketDynamoDBWithRaceCheck":     l.NewLeakyBucketDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps, ttl, true),
+		"LeakyBucketCosmosDBNoRaceCheck":       l.NewLeakyBucketCosmosDB(s.cosmosContainerClient, uuid.New().String(), ttl, false),
+		"LeakyBucketCosmosDBWithRaceCheck":     l.NewLeakyBucketCosmosDB(s.cosmosContainerClient, uuid.New().String(), ttl, true),
 	}
 }
 
@@ -48,7 +48,7 @@ func (s *LimitersTestSuite) TestLeakyBucketRealClock() {
 	rate := time.Millisecond * 10
 	clock := l.NewSystemClock()
 	for _, requestRate := range []time.Duration{rate / 2} {
-		for name, bucket := range s.leakyBuckets(capacity, rate, clock) {
+		for name, bucket := range s.leakyBuckets(capacity, rate, time.Second, clock) {
 			s.Run(name, func() {
 				wg := sync.WaitGroup{}
 				mu := sync.Mutex{}
@@ -91,7 +91,7 @@ func (s *LimitersTestSuite) TestLeakyBucketFakeClock() {
 	rate := time.Millisecond * 100
 	clock := newFakeClock()
 	for _, requestRate := range []time.Duration{rate * 2, rate, rate / 2, rate / 3, rate / 4, 0} {
-		for name, bucket := range s.leakyBuckets(capacity, rate, clock) {
+		for name, bucket := range s.leakyBuckets(capacity, rate, time.Second, clock) {
 			s.Run(name, func() {
 				clock.reset()
 				start := clock.Now()
@@ -118,7 +118,7 @@ func (s *LimitersTestSuite) TestLeakyBucketOverflow() {
 	rate := 100 * time.Millisecond // should be shorter than TTL
 	capacity := int64(2)
 	clock := newFakeClock()
-	for name, bucket := range s.leakyBuckets(capacity, rate, clock) {
+	for name, bucket := range s.leakyBuckets(capacity, rate, time.Second, clock) {
 		s.Run(name, func() {
 			clock.reset()
 			// The first call has no wait since there were no calls before.
@@ -143,11 +143,33 @@ func (s *LimitersTestSuite) TestLeakyBucketOverflow() {
 	}
 }
 
+func (s *LimitersTestSuite) TestLeakyBucketNoExpiration() {
+	clock := l.NewSystemClock()
+	buckets := s.leakyBuckets(1, 3*time.Second, 0, clock)
+
+	// Take all capacity from all buckets
+	for _, bucket := range buckets {
+		_, _ = bucket.Limit(context.TODO())
+		_, _ = bucket.Limit(context.TODO())
+	}
+
+	// Wait for 2 seconds to check if it treats 0 TTL as infinite
+	clock.Sleep(2 * time.Second)
+
+	// Expect all buckets to be still filled
+	for name, bucket := range buckets {
+		s.Run(name, func() {
+			_, err := bucket.Limit(context.TODO())
+			s.Require().Equal(l.ErrLimitExhausted, err)
+		})
+	}
+}
+
 func (s *LimitersTestSuite) TestLeakyBucketReset() {
 	rate := 100 * time.Millisecond // should be shorter than TTL
 	capacity := int64(2)
 	clock := newFakeClock()
-	for name, bucket := range s.leakyBuckets(capacity, rate, clock) {
+	for name, bucket := range s.leakyBuckets(capacity, rate, time.Second, clock) {
 		s.Run(name, func() {
 			clock.reset()
 			// The first call has no wait since there were no calls before.
@@ -228,7 +250,7 @@ func BenchmarkLeakyBuckets(b *testing.B) {
 	capacity := int64(1)
 	rate := 100 * time.Millisecond // should be shorter than TTL
 	clock := newFakeClock()
-	buckets := s.leakyBuckets(capacity, rate, clock)
+	buckets := s.leakyBuckets(capacity, rate, time.Second, clock)
 	for name, bucket := range buckets {
 		b.Run(name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {

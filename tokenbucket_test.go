@@ -71,10 +71,10 @@ var tokenBucketUniformTestCases = []struct {
 }
 
 // tokenBuckets returns all the possible TokenBucket combinations.
-func (s *LimitersTestSuite) tokenBuckets(capacity int64, refillRate time.Duration, clock l.Clock) map[string]*l.TokenBucket {
+func (s *LimitersTestSuite) tokenBuckets(capacity int64, refillRate, ttl time.Duration, clock l.Clock) map[string]*l.TokenBucket {
 	buckets := make(map[string]*l.TokenBucket)
 	for lockerName, locker := range s.lockers(true) {
-		for backendName, backend := range s.tokenBucketBackends() {
+		for backendName, backend := range s.tokenBucketBackends(ttl) {
 			buckets[lockerName+":"+backendName] = l.NewTokenBucket(capacity, refillRate, locker, backend, clock, s.logger)
 		}
 	}
@@ -82,28 +82,28 @@ func (s *LimitersTestSuite) tokenBuckets(capacity int64, refillRate time.Duratio
 	return buckets
 }
 
-func (s *LimitersTestSuite) tokenBucketBackends() map[string]l.TokenBucketStateBackend {
+func (s *LimitersTestSuite) tokenBucketBackends(ttl time.Duration) map[string]l.TokenBucketStateBackend {
 	return map[string]l.TokenBucketStateBackend{
 		"TokenBucketInMemory":                  l.NewTokenBucketInMemory(),
-		"TokenBucketEtcdNoRaceCheck":           l.NewTokenBucketEtcd(s.etcdClient, uuid.New().String(), time.Second, false),
-		"TokenBucketEtcdWithRaceCheck":         l.NewTokenBucketEtcd(s.etcdClient, uuid.New().String(), time.Second, true),
-		"TokenBucketRedisNoRaceCheck":          l.NewTokenBucketRedis(s.redisClient, uuid.New().String(), time.Second, false),
-		"TokenBucketRedisWithRaceCheck":        l.NewTokenBucketRedis(s.redisClient, uuid.New().String(), time.Second, true),
-		"TokenBucketRedisClusterNoRaceCheck":   l.NewTokenBucketRedis(s.redisClusterClient, uuid.New().String(), time.Second, false),
-		"TokenBucketRedisClusterWithRaceCheck": l.NewTokenBucketRedis(s.redisClusterClient, uuid.New().String(), time.Second, true),
-		"TokenBucketMemcachedNoRaceCheck":      l.NewTokenBucketMemcached(s.memcacheClient, uuid.New().String(), time.Second, false),
-		"TokenBucketMemcachedWithRaceCheck":    l.NewTokenBucketMemcached(s.memcacheClient, uuid.New().String(), time.Second, true),
-		"TokenBucketDynamoDBNoRaceCheck":       l.NewTokenBucketDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps, time.Second, false),
-		"TokenBucketDynamoDBWithRaceCheck":     l.NewTokenBucketDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps, time.Second, true),
-		"TokenBucketCosmosDBNoRaceCheck":       l.NewTokenBucketCosmosDB(s.cosmosContainerClient, uuid.New().String(), time.Second, false),
-		"TokenBucketCosmosDBWithRaceCheck":     l.NewTokenBucketCosmosDB(s.cosmosContainerClient, uuid.New().String(), time.Second, true),
+		"TokenBucketEtcdNoRaceCheck":           l.NewTokenBucketEtcd(s.etcdClient, uuid.New().String(), ttl, false),
+		"TokenBucketEtcdWithRaceCheck":         l.NewTokenBucketEtcd(s.etcdClient, uuid.New().String(), ttl, true),
+		"TokenBucketRedisNoRaceCheck":          l.NewTokenBucketRedis(s.redisClient, uuid.New().String(), ttl, false),
+		"TokenBucketRedisWithRaceCheck":        l.NewTokenBucketRedis(s.redisClient, uuid.New().String(), ttl, true),
+		"TokenBucketRedisClusterNoRaceCheck":   l.NewTokenBucketRedis(s.redisClusterClient, uuid.New().String(), ttl, false),
+		"TokenBucketRedisClusterWithRaceCheck": l.NewTokenBucketRedis(s.redisClusterClient, uuid.New().String(), ttl, true),
+		"TokenBucketMemcachedNoRaceCheck":      l.NewTokenBucketMemcached(s.memcacheClient, uuid.New().String(), ttl, false),
+		"TokenBucketMemcachedWithRaceCheck":    l.NewTokenBucketMemcached(s.memcacheClient, uuid.New().String(), ttl, true),
+		"TokenBucketDynamoDBNoRaceCheck":       l.NewTokenBucketDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps, ttl, false),
+		"TokenBucketDynamoDBWithRaceCheck":     l.NewTokenBucketDynamoDB(s.dynamodbClient, uuid.New().String(), s.dynamoDBTableProps, ttl, true),
+		"TokenBucketCosmosDBNoRaceCheck":       l.NewTokenBucketCosmosDB(s.cosmosContainerClient, uuid.New().String(), ttl, false),
+		"TokenBucketCosmosDBWithRaceCheck":     l.NewTokenBucketCosmosDB(s.cosmosContainerClient, uuid.New().String(), ttl, true),
 	}
 }
 
 func (s *LimitersTestSuite) TestTokenBucketRealClock() {
 	clock := l.NewSystemClock()
 	for _, testCase := range tokenBucketUniformTestCases {
-		for name, bucket := range s.tokenBuckets(testCase.capacity, testCase.refillRate, clock) {
+		for name, bucket := range s.tokenBuckets(testCase.capacity, testCase.refillRate, time.Second, clock) {
 			s.Run(name, func() {
 				wg := sync.WaitGroup{}
 				// mu guards the miss variable below.
@@ -135,7 +135,7 @@ func (s *LimitersTestSuite) TestTokenBucketRealClock() {
 func (s *LimitersTestSuite) TestTokenBucketFakeClock() {
 	for _, testCase := range tokenBucketUniformTestCases {
 		clock := newFakeClock()
-		for name, bucket := range s.tokenBuckets(testCase.capacity, testCase.refillRate, clock) {
+		for name, bucket := range s.tokenBuckets(testCase.capacity, testCase.refillRate, time.Second, clock) {
 			s.Run(name, func() {
 				clock.reset()
 				miss := 0
@@ -158,7 +158,7 @@ func (s *LimitersTestSuite) TestTokenBucketFakeClock() {
 func (s *LimitersTestSuite) TestTokenBucketOverflow() {
 	clock := newFakeClock()
 	rate := 100 * time.Millisecond // should be shorter than TTL
-	for name, bucket := range s.tokenBuckets(2, rate, clock) {
+	for name, bucket := range s.tokenBuckets(2, rate, time.Second, clock) {
 		s.Run(name, func() {
 			clock.reset()
 			wait, err := bucket.Limit(context.TODO())
@@ -183,7 +183,7 @@ func (s *LimitersTestSuite) TestTokenBucketOverflow() {
 func (s *LimitersTestSuite) TestTokenBucketReset() {
 	clock := newFakeClock()
 	rate := 100 * time.Millisecond // should be shorter than TTL
-	for name, bucket := range s.tokenBuckets(2, rate, clock) {
+	for name, bucket := range s.tokenBuckets(2, rate, time.Second, clock) {
 		s.Run(name, func() {
 			clock.reset()
 			wait, err := bucket.Limit(context.TODO())
@@ -207,7 +207,7 @@ func (s *LimitersTestSuite) TestTokenBucketReset() {
 }
 
 func (s *LimitersTestSuite) TestTokenBucketRefill() {
-	for name, backend := range s.tokenBucketBackends() {
+	for name, backend := range s.tokenBucketBackends(time.Second) {
 		s.Run(name, func() {
 			clock := newFakeClock()
 
@@ -316,6 +316,27 @@ func (s *LimitersTestSuite) TestTokenBucketRedisBackwardCompatibility() {
 	s.Equal(expectedState.Available, actualState.Available, "Available values should match")
 }
 
+func (s *LimitersTestSuite) TestTokenBucketNoExpiration() {
+	clock := l.NewSystemClock()
+	buckets := s.tokenBuckets(1, 3*time.Second, 0, clock)
+
+	// Take all capacity from all buckets
+	for _, bucket := range buckets {
+		_, _ = bucket.Limit(context.TODO())
+	}
+
+	// Wait for 2 seconds to check if it treats 0 TTL as infinite
+	clock.Sleep(2 * time.Second)
+
+	// Expect all buckets to be still filled
+	for name, bucket := range buckets {
+		s.Run(name, func() {
+			_, err := bucket.Limit(context.TODO())
+			s.Require().Equal(l.ErrLimitExhausted, err)
+		})
+	}
+}
+
 func BenchmarkTokenBuckets(b *testing.B) {
 	s := new(LimitersTestSuite)
 	s.SetT(&testing.T{})
@@ -323,7 +344,7 @@ func BenchmarkTokenBuckets(b *testing.B) {
 	capacity := int64(1)
 	rate := 100 * time.Millisecond // should be shorter than TTL
 	clock := newFakeClock()
-	buckets := s.tokenBuckets(capacity, rate, clock)
+	buckets := s.tokenBuckets(capacity, rate, time.Second, clock)
 	for name, bucket := range buckets {
 		b.Run(name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
