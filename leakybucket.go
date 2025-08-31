@@ -30,6 +30,11 @@ type LeakyBucketState struct {
 	Last int64
 }
 
+type leakyBucketStateWithExpirationTime struct {
+	LeakyBucketState
+	ExpiresAt int64
+}
+
 // IzZero returns true if the bucket state is zero valued.
 func (s LeakyBucketState) IzZero() bool {
 	return s.Last == 0
@@ -541,8 +546,9 @@ func NewLeakyBucketMemcached(cli *memcache.Client, key string, ttl time.Duration
 func (t *LeakyBucketMemcached) State(ctx context.Context) (LeakyBucketState, error) {
 	var item *memcache.Item
 	var err error
-	state := LeakyBucketState{}
+	var stateWithTTL leakyBucketStateWithExpirationTime
 	done := make(chan struct{}, 1)
+	t.casId = 0
 	go func() {
 		defer close(done)
 		item, err = t.cli.Get(t.key)
@@ -552,25 +558,29 @@ func (t *LeakyBucketMemcached) State(ctx context.Context) (LeakyBucketState, err
 	case <-done:
 
 	case <-ctx.Done():
-		return state, ctx.Err()
+		return stateWithTTL.LeakyBucketState, ctx.Err()
 	}
 
 	if err != nil {
 		if errors.Is(err, memcache.ErrCacheMiss) {
 			// Keys don't exist, return an empty state.
-			return state, nil
+			return stateWithTTL.LeakyBucketState, nil
 		}
 
-		return state, errors.Wrap(err, "failed to get keys from memcached")
+		return stateWithTTL.LeakyBucketState, errors.Wrap(err, "failed to get keys from memcached")
 	}
 	b := bytes.NewBuffer(item.Value)
-	err = gob.NewDecoder(b).Decode(&state)
+	err = gob.NewDecoder(b).Decode(&stateWithTTL)
 	if err != nil {
-		return state, errors.Wrap(err, "failed to Decode")
+		return stateWithTTL.LeakyBucketState, errors.Wrap(err, "failed to Decode")
+	}
+	if stateWithTTL.ExpiresAt != 0 && stateWithTTL.ExpiresAt <= time.Now().UnixMilli() {
+		// The key exist, but it has been over the original TTL.
+		return LeakyBucketState{}, nil
 	}
 	t.casId = item.CasID
 
-	return state, nil
+	return stateWithTTL.LeakyBucketState, nil
 }
 
 // SetState updates the state in Memcached.
@@ -579,17 +589,25 @@ func (t *LeakyBucketMemcached) SetState(ctx context.Context, state LeakyBucketSt
 	var err error
 	done := make(chan struct{}, 1)
 	var b bytes.Buffer
-	err = gob.NewEncoder(&b).Encode(state)
+	stateWithTTL := leakyBucketStateWithExpirationTime{
+		LeakyBucketState: state,
+		ExpiresAt:        time.Now().Add(t.ttl).UnixMilli(),
+	}
+	err = gob.NewEncoder(&b).Encode(stateWithTTL)
 	if err != nil {
 		return errors.Wrap(err, "failed to Encode")
 	}
 	go func() {
 		defer close(done)
 		item := &memcache.Item{
-			Key:        t.key,
-			Value:      b.Bytes(),
-			CasID:      t.casId,
-			Expiration: int32(time.Now().Add(t.ttl).Unix()),
+			Key:   t.key,
+			Value: b.Bytes(),
+			CasID: t.casId,
+		}
+		if t.ttl > 0 {
+			// Memcached expires at the beginning of the second,
+			// so when 1s expiration is set at 0.999s, it's actually just 0.001s.
+			item.Expiration = int32(time.Now().Add(t.ttl).Unix()) + 1
 		}
 		if t.raceCheck && t.casId > 0 {
 			err = t.cli.CompareAndSwap(item)

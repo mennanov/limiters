@@ -157,7 +157,7 @@ func (s *LimitersTestSuite) TestTokenBucketFakeClock() {
 
 func (s *LimitersTestSuite) TestTokenBucketOverflow() {
 	clock := newFakeClock()
-	rate := time.Second
+	rate := 100 * time.Millisecond // should be shorter than TTL
 	for name, bucket := range s.tokenBuckets(2, rate, clock) {
 		s.Run(name, func() {
 			clock.reset()
@@ -182,7 +182,7 @@ func (s *LimitersTestSuite) TestTokenBucketOverflow() {
 
 func (s *LimitersTestSuite) TestTokenBucketReset() {
 	clock := newFakeClock()
-	rate := time.Second
+	rate := 100 * time.Millisecond // should be shorter than TTL
 	for name, bucket := range s.tokenBuckets(2, rate, clock) {
 		s.Run(name, func() {
 			clock.reset()
@@ -321,7 +321,7 @@ func BenchmarkTokenBuckets(b *testing.B) {
 	s.SetT(&testing.T{})
 	s.SetupSuite()
 	capacity := int64(1)
-	rate := time.Second
+	rate := 100 * time.Millisecond // should be shorter than TTL
 	clock := newFakeClock()
 	buckets := s.tokenBuckets(capacity, rate, clock)
 	for name, bucket := range buckets {

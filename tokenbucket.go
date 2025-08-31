@@ -33,6 +33,11 @@ type TokenBucketState struct {
 	Available int64
 }
 
+type tokenBucketStateWithExpirationTime struct {
+	TokenBucketState
+	ExpiresAt int64
+}
+
 // isZero returns true if the bucket state is zero valued.
 func (s TokenBucketState) isZero() bool {
 	return s.Last == 0 && s.Available == 0
@@ -642,12 +647,10 @@ func NewTokenBucketMemcached(cli *memcache.Client, key string, ttl time.Duration
 // State gets the bucket's state from Memcached.
 func (t *TokenBucketMemcached) State(ctx context.Context) (TokenBucketState, error) {
 	var item *memcache.Item
-	var state TokenBucketState
 	var err error
-
+	var stateWithTTL tokenBucketStateWithExpirationTime
 	done := make(chan struct{}, 1)
 	t.casId = 0
-
 	go func() {
 		defer close(done)
 		item, err = t.cli.Get(t.key)
@@ -657,25 +660,29 @@ func (t *TokenBucketMemcached) State(ctx context.Context) (TokenBucketState, err
 	case <-done:
 
 	case <-ctx.Done():
-		return state, ctx.Err()
+		return stateWithTTL.TokenBucketState, ctx.Err()
 	}
 
 	if err != nil {
 		if errors.Is(err, memcache.ErrCacheMiss) {
 			// Keys don't exist, return the initial state.
-			return state, nil
+			return stateWithTTL.TokenBucketState, nil
 		}
 
-		return state, errors.Wrap(err, "failed to get key from memcached")
+		return stateWithTTL.TokenBucketState, errors.Wrap(err, "failed to get key from memcached")
 	}
 	b := bytes.NewBuffer(item.Value)
-	err = gob.NewDecoder(b).Decode(&state)
+	err = gob.NewDecoder(b).Decode(&stateWithTTL)
 	if err != nil {
-		return state, errors.Wrap(err, "failed to Decode")
+		return stateWithTTL.TokenBucketState, errors.Wrap(err, "failed to Decode")
+	}
+	if stateWithTTL.ExpiresAt != 0 && stateWithTTL.ExpiresAt <= time.Now().UnixMilli() {
+		// The key exist, but it has been over the original TTL.
+		return TokenBucketState{}, nil
 	}
 	t.casId = item.CasID
 
-	return state, nil
+	return stateWithTTL.TokenBucketState, nil
 }
 
 // SetState updates the state in Memcached.
@@ -683,17 +690,25 @@ func (t *TokenBucketMemcached) SetState(ctx context.Context, state TokenBucketSt
 	var err error
 	done := make(chan struct{}, 1)
 	var b bytes.Buffer
-	err = gob.NewEncoder(&b).Encode(state)
+	stateWithTTL := tokenBucketStateWithExpirationTime{
+		TokenBucketState: state,
+		ExpiresAt:        time.Now().Add(t.ttl).UnixMilli(),
+	}
+	err = gob.NewEncoder(&b).Encode(stateWithTTL)
 	if err != nil {
 		return errors.Wrap(err, "failed to Encode")
 	}
 	go func() {
 		defer close(done)
 		item := &memcache.Item{
-			Key:        t.key,
-			Value:      b.Bytes(),
-			CasID:      t.casId,
-			Expiration: int32(time.Now().Add(t.ttl).Unix()),
+			Key:   t.key,
+			Value: b.Bytes(),
+			CasID: t.casId,
+		}
+		if t.ttl > 0 {
+			// Memcached expires at the beginning of the second,
+			// so when 1s expiration is set at 0.999s, it's actually just 0.001s.
+			item.Expiration = int32(time.Now().Add(t.ttl).Unix()) + 1
 		}
 		if t.raceCheck && t.casId > 0 {
 			err = t.cli.CompareAndSwap(item)

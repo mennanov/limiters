@@ -115,7 +115,7 @@ func (s *LimitersTestSuite) TestLeakyBucketFakeClock() {
 }
 
 func (s *LimitersTestSuite) TestLeakyBucketOverflow() {
-	rate := time.Second
+	rate := 100 * time.Millisecond // should be shorter than TTL
 	capacity := int64(2)
 	clock := newFakeClock()
 	for name, bucket := range s.leakyBuckets(capacity, rate, clock) {
@@ -144,7 +144,7 @@ func (s *LimitersTestSuite) TestLeakyBucketOverflow() {
 }
 
 func (s *LimitersTestSuite) TestLeakyBucketReset() {
-	rate := time.Second
+	rate := 100 * time.Millisecond // should be shorter than TTL
 	capacity := int64(2)
 	clock := newFakeClock()
 	for name, bucket := range s.leakyBuckets(capacity, rate, clock) {
@@ -226,7 +226,7 @@ func BenchmarkLeakyBuckets(b *testing.B) {
 	s.SetT(&testing.T{})
 	s.SetupSuite()
 	capacity := int64(1)
-	rate := time.Second
+	rate := 100 * time.Millisecond // should be shorter than TTL
 	clock := newFakeClock()
 	buckets := s.leakyBuckets(capacity, rate, clock)
 	for name, bucket := range buckets {
