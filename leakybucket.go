@@ -493,7 +493,11 @@ func (t *LeakyBucketRedis) SetState(ctx context.Context, state LeakyBucketState)
 			return
 		}
 
-		script := `
+		callScript := `redis.call('set', KEYS[1], ARGV[1], 'PX', ARGV[3])`
+		if t.ttl == 0 {
+			callScript = `redis.call('set', KEYS[1], ARGV[1])`
+		}
+		script := fmt.Sprintf(`
 			local current = redis.call('get', KEYS[1])
 			if current then
 				local data = cjson.decode(current)
@@ -501,9 +505,9 @@ func (t *LeakyBucketRedis) SetState(ctx context.Context, state LeakyBucketState)
 					return 'RACE_CONDITION'
 				end
 			end
-			redis.call('set', KEYS[1], ARGV[1], 'PX', ARGV[3])
+			%s
 			return 'OK'
-		`
+		`, callScript)
 		result, err := t.cli.Eval(ctx, script, []string{key}, value, t.lastVersion, int64(t.ttl/time.Millisecond)).Result()
 		if err != nil {
 			errCh <- err
@@ -802,7 +806,7 @@ type CosmosDBLeakyBucketItem struct {
 	PartitionKey string           `json:"partitionKey"`
 	State        LeakyBucketState `json:"state"`
 	Version      int64            `json:"version"`
-	TTL          int64            `json:"ttl"`
+	TTL          int64            `json:"ttl,omitempty"`
 }
 
 // LeakyBucketCosmosDB is a CosmosDB implementation of a LeakyBucketStateBackend.
