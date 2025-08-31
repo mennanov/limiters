@@ -183,7 +183,7 @@ func (s *LimitersTestSuite) TestTokenBucketOverflow() {
 
 func (s *LimitersTestSuite) TestTokenTakeMaxOverflow() {
 	clock := newFakeClock()
-	rate := time.Second
+	rate := 100 * time.Millisecond // it should be less than TTL for proper check
 	for name, bucket := range s.tokenBuckets(3, rate, clock) {
 		s.Run(name, func() {
 			clock.reset()
@@ -197,7 +197,7 @@ func (s *LimitersTestSuite) TestTokenTakeMaxOverflow() {
 			s.Equal(int64(1), taken)
 			// Now it is not able to take any.
 			taken, err = bucket.TakeMax(context.TODO(), 2)
-			s.Require().Equal(l.ErrLimitExhausted, err)
+			s.Require().NoError(err)
 			s.Equal(int64(0), taken)
 			clock.Sleep(rate)
 			// Retry the last call.
