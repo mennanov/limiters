@@ -2,8 +2,6 @@ module github.com/mennanov/limiters
 
 go 1.23.8
 
-toolchain go1.24.1
-
 replace github.com/armon/go-metrics => github.com/hashicorp/go-metrics v0.4.1
 
 require (
