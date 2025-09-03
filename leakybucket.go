@@ -619,7 +619,7 @@ func (t *LeakyBucketMemcached) SetState(ctx context.Context, state LeakyBucketSt
 			item.Expiration = int32(time.Now().Add(t.ttl).Unix())
 		} else if t.ttl > 0 {
 			// Memcached supports expiration in seconds. It's more precise way.
-			item.Expiration = int32(t.ttl.Seconds())
+			item.Expiration = int32(math.Ceil(t.ttl.Seconds()))
 		}
 		if t.raceCheck && t.casId > 0 {
 			err = t.cli.CompareAndSwap(item)
@@ -838,10 +838,6 @@ func (t *LeakyBucketCosmosDB) State(ctx context.Context) (LeakyBucketState, erro
 	err = json.Unmarshal(resp.Value, &item)
 	if err != nil {
 		return LeakyBucketState{}, errors.Wrap(err, "failed to decode state from Cosmos DB")
-	}
-
-	if item.TTL > 0 && time.Now().Unix() > item.TTL {
-		return LeakyBucketState{}, nil
 	}
 
 	if t.raceCheck {

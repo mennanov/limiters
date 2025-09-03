@@ -6,6 +6,7 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"sync"
@@ -719,7 +720,7 @@ func (t *TokenBucketMemcached) SetState(ctx context.Context, state TokenBucketSt
 			item.Expiration = int32(time.Now().Add(t.ttl).Unix())
 		} else if t.ttl > 0 {
 			// Memcached supports expiration in seconds. It's more precise way.
-			item.Expiration = int32(t.ttl.Seconds())
+			item.Expiration = int32(math.Ceil(t.ttl.Seconds()))
 		}
 		if t.raceCheck && t.casId > 0 {
 			err = t.cli.CompareAndSwap(item)
@@ -942,10 +943,6 @@ func (t *TokenBucketCosmosDB) State(ctx context.Context) (TokenBucketState, erro
 		return TokenBucketState{}, errors.Wrap(err, "failed to decode state from Cosmos DB")
 	}
 
-	if item.TTL != 0 && time.Now().Unix() > item.TTL {
-		return TokenBucketState{}, nil
-	}
-
 	if t.raceCheck {
 		t.latestVersion = item.Version
 	}
@@ -964,7 +961,7 @@ func (t *TokenBucketCosmosDB) SetState(ctx context.Context, state TokenBucketSta
 		Version:      t.latestVersion + 1,
 	}
 	if t.ttl > 0 {
-		item.TTL = time.Now().Add(t.ttl).Unix()
+		item.TTL = int64(math.Ceil(t.ttl.Seconds()))
 	}
 
 	value, err := json.Marshal(item)
