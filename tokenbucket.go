@@ -311,21 +311,6 @@ func (t *TokenBucketEtcd) save(ctx context.Context, state TokenBucketState) erro
 	if t.ttl > 0 {
 		opts = append(opts, clientv3.WithLease(t.leaseID))
 	}
-	if !t.raceCheck {
-		ops := []clientv3.Op{
-			clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBAvailable), fmt.Sprintf("%d", state.Available), opts...),
-			clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBLast), fmt.Sprintf("%d", state.Last), opts...),
-		}
-		if t.ttl > 0 {
-			ops = append(ops, clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBLease), fmt.Sprintf("%d", t.leaseID), opts...))
-		}
-		if _, err := t.cli.Txn(ctx).Then(ops...).Commit(); err != nil {
-			return errors.Wrap(err, "failed to commit a transaction to etcd")
-		}
-
-		return nil
-	}
-	// Put the keys only if they have not been modified since the most recent read.
 	ops := []clientv3.Op{
 		clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBAvailable), fmt.Sprintf("%d", state.Available), opts...),
 		clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBLast), fmt.Sprintf("%d", state.Last), opts...),
@@ -333,6 +318,14 @@ func (t *TokenBucketEtcd) save(ctx context.Context, state TokenBucketState) erro
 	if t.ttl > 0 {
 		ops = append(ops, clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBLease), fmt.Sprintf("%d", t.leaseID), opts...))
 	}
+	if !t.raceCheck {
+		if _, err := t.cli.Txn(ctx).Then(ops...).Commit(); err != nil {
+			return errors.Wrap(err, "failed to commit a transaction to etcd")
+		}
+
+		return nil
+	}
+	// Put the keys only if they have not been modified since the most recent read.
 	r, err := t.cli.Txn(ctx).If(
 		clientv3.Compare(clientv3.Version(etcdKey(t.prefix, etcdKeyTBLast)), ">", t.lastVersion),
 	).Else(ops...).Commit()

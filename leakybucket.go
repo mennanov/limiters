@@ -247,24 +247,18 @@ func (l *LeakyBucketEtcd) save(ctx context.Context, state LeakyBucketState) erro
 	if l.ttl > 0 {
 		opts = append(opts, clientv3.WithLease(l.leaseID))
 	}
+	ops := []clientv3.Op{
+		clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBLast), fmt.Sprintf("%d", state.Last), opts...),
+	}
+	if l.ttl > 0 {
+		ops = append(ops, clientv3.OpPut(etcdKey(l.prefix, etcdKeyTBLease), fmt.Sprintf("%d", l.leaseID), opts...))
+	}
 	if !l.raceCheck {
-		ops := []clientv3.Op{
-			clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBLast), fmt.Sprintf("%d", state.Last), opts...),
-		}
-		if l.ttl > 0 {
-			ops = append(ops, clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBLease), fmt.Sprintf("%d", l.leaseID), opts...))
-		}
 		if _, err := l.cli.Txn(ctx).Then(ops...).Commit(); err != nil {
 			return errors.Wrap(err, "failed to commit a transaction to etcd")
 		}
 
 		return nil
-	}
-	ops := []clientv3.Op{
-		clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBLast), fmt.Sprintf("%d", state.Last), opts...),
-	}
-	if l.ttl > 0 {
-		ops = append(ops, clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBLease), fmt.Sprintf("%d", l.leaseID), opts...))
 	}
 	// Put the keys only if they have not been modified since the most recent read.
 	r, err := l.cli.Txn(ctx).If(
