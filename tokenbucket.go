@@ -33,11 +33,6 @@ type TokenBucketState struct {
 	Available int64
 }
 
-type tokenBucketStateWithExpirationTime struct {
-	TokenBucketState
-	ExpiresAt int64
-}
-
 // isZero returns true if the bucket state is zero valued.
 func (s TokenBucketState) isZero() bool {
 	return s.Last == 0 && s.Available == 0
@@ -670,7 +665,7 @@ func NewTokenBucketMemcached(cli *memcache.Client, key string, ttl time.Duration
 func (t *TokenBucketMemcached) State(ctx context.Context) (TokenBucketState, error) {
 	var item *memcache.Item
 	var err error
-	var stateWithTTL tokenBucketStateWithExpirationTime
+	var state TokenBucketState
 	done := make(chan struct{}, 1)
 	t.casId = 0
 	go func() {
@@ -682,29 +677,25 @@ func (t *TokenBucketMemcached) State(ctx context.Context) (TokenBucketState, err
 	case <-done:
 
 	case <-ctx.Done():
-		return stateWithTTL.TokenBucketState, ctx.Err()
+		return state, ctx.Err()
 	}
 
 	if err != nil {
 		if errors.Is(err, memcache.ErrCacheMiss) {
 			// Keys don't exist, return the initial state.
-			return stateWithTTL.TokenBucketState, nil
+			return state, nil
 		}
 
-		return stateWithTTL.TokenBucketState, errors.Wrap(err, "failed to get key from memcached")
+		return state, errors.Wrap(err, "failed to get key from memcached")
 	}
 	b := bytes.NewBuffer(item.Value)
-	err = gob.NewDecoder(b).Decode(&stateWithTTL)
+	err = gob.NewDecoder(b).Decode(&state)
 	if err != nil {
-		return stateWithTTL.TokenBucketState, errors.Wrap(err, "failed to Decode")
-	}
-	if stateWithTTL.ExpiresAt != 0 && stateWithTTL.ExpiresAt <= time.Now().UnixMilli() {
-		// The key exist, but it has been over the original TTL.
-		return TokenBucketState{}, nil
+		return state, errors.Wrap(err, "failed to Decode")
 	}
 	t.casId = item.CasID
 
-	return stateWithTTL.TokenBucketState, nil
+	return state, nil
 }
 
 // SetState updates the state in Memcached.
@@ -712,13 +703,7 @@ func (t *TokenBucketMemcached) SetState(ctx context.Context, state TokenBucketSt
 	var err error
 	done := make(chan struct{}, 1)
 	var b bytes.Buffer
-	stateWithTTL := tokenBucketStateWithExpirationTime{
-		TokenBucketState: state,
-	}
-	if t.ttl > 0 {
-		stateWithTTL.ExpiresAt = time.Now().Add(t.ttl).UnixMilli()
-	}
-	err = gob.NewEncoder(&b).Encode(stateWithTTL)
+	err = gob.NewEncoder(&b).Encode(state)
 	if err != nil {
 		return errors.Wrap(err, "failed to Encode")
 	}
@@ -729,10 +714,12 @@ func (t *TokenBucketMemcached) SetState(ctx context.Context, state TokenBucketSt
 			Value: b.Bytes(),
 			CasID: t.casId,
 		}
-		if t.ttl > 0 {
-			// Memcached expires at the beginning of the second,
-			// so when 1s expiration is set at 0.999s, it's actually just 0.001s.
-			item.Expiration = int32(time.Now().Add(t.ttl).Unix()) + 1
+		if t.ttl > 30*24*time.Hour {
+			// If the value is over 30 days, it treats it as UNIX timestamp.
+			item.Expiration = int32(time.Now().Add(t.ttl).Unix())
+		} else if t.ttl > 0 {
+			// Memcached supports expiration in seconds. It's more precise way.
+			item.Expiration = int32(t.ttl.Seconds())
 		}
 		if t.raceCheck && t.casId > 0 {
 			err = t.cli.CompareAndSwap(item)
