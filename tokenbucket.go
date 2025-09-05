@@ -296,7 +296,7 @@ func (t *TokenBucketEtcd) State(ctx context.Context) (TokenBucketState, error) {
 
 // createLease creates a new lease in etcd and updates the t.leaseID value.
 func (t *TokenBucketEtcd) createLease(ctx context.Context) error {
-	lease, err := t.cli.Grant(ctx, int64(t.ttl/time.Nanosecond))
+	lease, err := t.cli.Grant(ctx, int64(math.Ceil(t.ttl.Seconds())))
 	if err != nil {
 		return errors.Wrap(err, "failed to create a new lease in etcd")
 	}

@@ -232,7 +232,7 @@ func (l *LeakyBucketEtcd) State(ctx context.Context) (LeakyBucketState, error) {
 
 // createLease creates a new lease in etcd and updates the t.leaseID value.
 func (l *LeakyBucketEtcd) createLease(ctx context.Context) error {
-	lease, err := l.cli.Grant(ctx, int64(l.ttl/time.Nanosecond))
+	lease, err := l.cli.Grant(ctx, int64(math.Ceil(l.ttl.Seconds())))
 	if err != nil {
 		return errors.Wrap(err, "failed to create a new lease in etcd")
 	}
