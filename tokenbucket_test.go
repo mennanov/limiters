@@ -103,7 +103,7 @@ func (s *LimitersTestSuite) tokenBucketBackends(ttl time.Duration) map[string]l.
 func (s *LimitersTestSuite) TestTokenBucketRealClock() {
 	clock := l.NewSystemClock()
 	for _, testCase := range tokenBucketUniformTestCases {
-		for name, bucket := range s.tokenBuckets(testCase.capacity, testCase.refillRate, time.Second, clock) {
+		for name, bucket := range s.tokenBuckets(testCase.capacity, testCase.refillRate, time.Minute, clock) {
 			s.Run(name, func() {
 				wg := sync.WaitGroup{}
 				// mu guards the miss variable below.
@@ -135,7 +135,7 @@ func (s *LimitersTestSuite) TestTokenBucketRealClock() {
 func (s *LimitersTestSuite) TestTokenBucketFakeClock() {
 	for _, testCase := range tokenBucketUniformTestCases {
 		clock := newFakeClock()
-		for name, bucket := range s.tokenBuckets(testCase.capacity, testCase.refillRate, time.Second, clock) {
+		for name, bucket := range s.tokenBuckets(testCase.capacity, testCase.refillRate, time.Minute, clock) {
 			s.Run(name, func() {
 				clock.reset()
 				miss := 0
@@ -158,7 +158,7 @@ func (s *LimitersTestSuite) TestTokenBucketFakeClock() {
 func (s *LimitersTestSuite) TestTokenBucketOverflow() {
 	clock := newFakeClock()
 	rate := 100 * time.Millisecond // should be shorter than TTL
-	for name, bucket := range s.tokenBuckets(2, rate, time.Second, clock) {
+	for name, bucket := range s.tokenBuckets(2, rate, time.Minute, clock) {
 		s.Run(name, func() {
 			clock.reset()
 			wait, err := bucket.Limit(context.TODO())
@@ -183,7 +183,7 @@ func (s *LimitersTestSuite) TestTokenBucketOverflow() {
 func (s *LimitersTestSuite) TestTokenBucketReset() {
 	clock := newFakeClock()
 	rate := 100 * time.Millisecond // should be shorter than TTL
-	for name, bucket := range s.tokenBuckets(2, rate, time.Second, clock) {
+	for name, bucket := range s.tokenBuckets(2, rate, time.Minute, clock) {
 		s.Run(name, func() {
 			clock.reset()
 			wait, err := bucket.Limit(context.TODO())
@@ -207,7 +207,7 @@ func (s *LimitersTestSuite) TestTokenBucketReset() {
 }
 
 func (s *LimitersTestSuite) TestTokenBucketRefill() {
-	for name, backend := range s.tokenBucketBackends(time.Second) {
+	for name, backend := range s.tokenBucketBackends(time.Minute) {
 		s.Run(name, func() {
 			clock := newFakeClock()
 
@@ -296,7 +296,7 @@ func setTokenBucketStateInOldFormat(ctx context.Context, cli *redis.Client, pref
 func (s *LimitersTestSuite) TestTokenBucketRedisBackwardCompatibility() {
 	// Create a new TokenBucketRedis instance
 	prefix := uuid.New().String()
-	backend := l.NewTokenBucketRedis(s.redisClient, prefix, time.Second, false)
+	backend := l.NewTokenBucketRedis(s.redisClient, prefix, time.Minute, false)
 
 	// Write state using old format
 	ctx := context.Background()
@@ -306,7 +306,7 @@ func (s *LimitersTestSuite) TestTokenBucketRedisBackwardCompatibility() {
 	}
 
 	// Write directly to Redis using old format
-	err := setTokenBucketStateInOldFormat(ctx, s.redisClient, prefix, expectedState, time.Second)
+	err := setTokenBucketStateInOldFormat(ctx, s.redisClient, prefix, expectedState, time.Minute)
 	s.Require().NoError(err, "Failed to set state using old format")
 
 	// Read state using new format (State)
