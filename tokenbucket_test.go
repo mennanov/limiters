@@ -3,6 +3,7 @@ package limiters_test
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -236,46 +237,6 @@ func (s *LimitersTestSuite) TestTokenBucketRefill() {
 	}
 }
 
-// TestTokenBucketMemcachedExpiry verifies Memcached TTL expiry for TokenBucketMemcached (no race check).
-func (s *LimitersTestSuite) TestTokenBucketMemcachedExpiry() {
-	ttl := time.Second
-	backend := l.NewTokenBucketMemcached(s.memcacheClient, uuid.New().String(), ttl, false)
-	bucket := l.NewTokenBucket(2, time.Second, l.NewLockNoop(), backend, l.NewSystemClock(), s.logger)
-	ctx := context.Background()
-	_, err := bucket.Limit(ctx)
-	s.Require().NoError(err)
-	_, err = bucket.Limit(ctx)
-	s.Require().NoError(err)
-	state, err := backend.State(ctx)
-	s.Require().NoError(err)
-	s.Equal(int64(0), state.Available, "Tokens should be depleted after two takes")
-	nextTs := time.Now().Add(ttl).Truncate(time.Second).Add(time.Second)
-	time.Sleep(time.Until(nextTs))
-	state, err = backend.State(ctx)
-	s.Require().NoError(err)
-	s.True(state.Last == 0 && state.Available == 0, "State should be zero after expiry, got: %+v", state)
-}
-
-// TestTokenBucketMemcachedExpiryWithRaceCheck verifies Memcached TTL expiry for TokenBucketMemcached (race check enabled).
-func (s *LimitersTestSuite) TestTokenBucketMemcachedExpiryWithRaceCheck() {
-	ttl := time.Second
-	backend := l.NewTokenBucketMemcached(s.memcacheClient, uuid.New().String(), ttl, true)
-	bucket := l.NewTokenBucket(2, time.Second, l.NewLockNoop(), backend, l.NewSystemClock(), s.logger)
-	ctx := context.Background()
-	_, err := bucket.Limit(ctx)
-	s.Require().NoError(err)
-	_, err = bucket.Limit(ctx)
-	s.Require().NoError(err)
-	state, err := backend.State(ctx)
-	s.Require().NoError(err)
-	s.Equal(int64(0), state.Available, "Tokens should be depleted after two takes")
-	nextTs := time.Now().Add(ttl).Truncate(time.Second).Add(time.Second)
-	time.Sleep(time.Until(nextTs))
-	state, err = backend.State(ctx)
-	s.Require().NoError(err)
-	s.True(state.Last == 0 && state.Available == 0, "State should be zero after expiry, got: %+v", state)
-}
-
 // setTokenBucketStateInOldFormat is a test utility method for writing state in the old format to Redis.
 func setTokenBucketStateInOldFormat(ctx context.Context, cli *redis.Client, prefix string, state l.TokenBucketState, ttl time.Duration) error {
 	_, err := cli.TxPipelined(ctx, func(pipeliner redis.Pipeliner) error {
@@ -320,7 +281,7 @@ func (s *LimitersTestSuite) TestTokenBucketRedisBackwardCompatibility() {
 
 func (s *LimitersTestSuite) TestTokenBucketNoExpiration() {
 	clock := l.NewSystemClock()
-	buckets := s.tokenBuckets(1, 3*time.Second, 0, clock)
+	buckets := s.tokenBuckets(1, time.Minute, 0, clock)
 
 	// Take all capacity from all buckets
 	for _, bucket := range buckets {
@@ -335,6 +296,36 @@ func (s *LimitersTestSuite) TestTokenBucketNoExpiration() {
 		s.Run(name, func() {
 			_, err := bucket.Limit(context.TODO())
 			s.Require().Equal(l.ErrLimitExhausted, err)
+		})
+	}
+}
+
+func (s *LimitersTestSuite) TestTokenBucketTTLExpiration() {
+	clock := l.NewSystemClock()
+	buckets := s.tokenBuckets(1, time.Minute, time.Second, clock)
+
+	// Ignore in-memory bucket, as it has no expiration,
+	// ignore DynamoDB, as amazon/dynamodb-local doesn't support TTLs.
+	for k := range buckets {
+		if strings.Contains(k, "BucketInMemory") || strings.Contains(k, "BucketDynamoDB") {
+			delete(buckets, k)
+		}
+	}
+
+	// Take all capacity from all buckets
+	for _, bucket := range buckets {
+		_, _ = bucket.Limit(context.TODO())
+	}
+
+	// Wait for 3 seconds to check if the items have been deleted successfully
+	clock.Sleep(3 * time.Second)
+
+	// Expect all buckets to be still filled
+	for name, bucket := range buckets {
+		s.Run(name, func() {
+			wait, err := bucket.Limit(context.TODO())
+			s.Require().Equal(time.Duration(0), wait)
+			s.Require().NoError(err)
 		})
 	}
 }

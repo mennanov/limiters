@@ -3,6 +3,7 @@ package limiters_test
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -145,7 +146,7 @@ func (s *LimitersTestSuite) TestLeakyBucketOverflow() {
 
 func (s *LimitersTestSuite) TestLeakyBucketNoExpiration() {
 	clock := l.NewSystemClock()
-	buckets := s.leakyBuckets(1, 3*time.Second, 0, clock)
+	buckets := s.leakyBuckets(1, time.Minute, 0, clock)
 
 	// Take all capacity from all buckets
 	for _, bucket := range buckets {
@@ -161,6 +162,37 @@ func (s *LimitersTestSuite) TestLeakyBucketNoExpiration() {
 		s.Run(name, func() {
 			_, err := bucket.Limit(context.TODO())
 			s.Require().Equal(l.ErrLimitExhausted, err)
+		})
+	}
+}
+
+func (s *LimitersTestSuite) TestLeakyBucketTTLExpiration() {
+	clock := l.NewSystemClock()
+	buckets := s.leakyBuckets(1, time.Minute, time.Second, clock)
+
+	// Ignore in-memory bucket, as it has no expiration,
+	// ignore DynamoDB, as amazon/dynamodb-local doesn't support TTLs.
+	for k := range buckets {
+		if strings.Contains(k, "BucketInMemory") || strings.Contains(k, "BucketDynamoDB") {
+			delete(buckets, k)
+		}
+	}
+
+	// Take all capacity from all buckets
+	for _, bucket := range buckets {
+		_, _ = bucket.Limit(context.TODO())
+		_, _ = bucket.Limit(context.TODO())
+	}
+
+	// Wait for 3 seconds to check if the items have been deleted successfully
+	clock.Sleep(3 * time.Second)
+
+	// Expect all buckets to be still filled
+	for name, bucket := range buckets {
+		s.Run(name, func() {
+			wait, err := bucket.Limit(context.TODO())
+			s.Require().Equal(time.Duration(0), wait)
+			s.Require().NoError(err)
 		})
 	}
 }
@@ -193,46 +225,6 @@ func (s *LimitersTestSuite) TestLeakyBucketReset() {
 			s.Equal(time.Duration(0), wait)
 		})
 	}
-}
-
-// TestLeakyBucketMemcachedExpiry verifies Memcached TTL expiry for LeakyBucketMemcached (no race check).
-func (s *LimitersTestSuite) TestLeakyBucketMemcachedExpiry() {
-	ttl := time.Second
-	backend := l.NewLeakyBucketMemcached(s.memcacheClient, uuid.New().String(), ttl, false)
-	bucket := l.NewLeakyBucket(2, time.Second, l.NewLockNoop(), backend, l.NewSystemClock(), s.logger)
-	ctx := context.Background()
-	_, err := bucket.Limit(ctx)
-	s.Require().NoError(err)
-	_, err = bucket.Limit(ctx)
-	s.Require().NoError(err)
-	state, err := backend.State(ctx)
-	s.Require().NoError(err)
-	s.NotEqual(int64(0), state.Last, "Last should be set after token takes")
-	nextTs := time.Now().Add(ttl).Truncate(time.Second).Add(time.Second)
-	time.Sleep(time.Until(nextTs))
-	state, err = backend.State(ctx)
-	s.Require().NoError(err)
-	s.Equal(int64(0), state.Last, "State should be zero after expiry, got: %+v", state)
-}
-
-// TestLeakyBucketMemcachedExpiryWithRaceCheck verifies Memcached TTL expiry for LeakyBucketMemcached (race check enabled).
-func (s *LimitersTestSuite) TestLeakyBucketMemcachedExpiryWithRaceCheck() {
-	ttl := time.Second
-	backend := l.NewLeakyBucketMemcached(s.memcacheClient, uuid.New().String(), ttl, true)
-	bucket := l.NewLeakyBucket(2, time.Second, l.NewLockNoop(), backend, l.NewSystemClock(), s.logger)
-	ctx := context.Background()
-	_, err := bucket.Limit(ctx)
-	s.Require().NoError(err)
-	_, err = bucket.Limit(ctx)
-	s.Require().NoError(err)
-	state, err := backend.State(ctx)
-	s.Require().NoError(err)
-	s.NotEqual(int64(0), state.Last, "Last should be set after token takes")
-	nextTs := time.Now().Add(ttl).Truncate(time.Second).Add(time.Second)
-	time.Sleep(time.Until(nextTs))
-	state, err = backend.State(ctx)
-	s.Require().NoError(err)
-	s.Equal(int64(0), state.Last, "State should be zero after expiry, got: %+v", state)
 }
 
 func TestLeakyBucket_ZeroCapacity_ReturnsError(t *testing.T) {
