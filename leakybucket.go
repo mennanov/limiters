@@ -251,7 +251,7 @@ func (l *LeakyBucketEtcd) save(ctx context.Context, state LeakyBucketState) erro
 		clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBLast), fmt.Sprintf("%d", state.Last), opts...),
 	}
 	if l.ttl > 0 {
-		ops = append(ops, clientv3.OpPut(etcdKey(l.prefix, etcdKeyTBLease), fmt.Sprintf("%d", l.leaseID), opts...))
+		ops = append(ops, clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBLease), fmt.Sprintf("%d", l.leaseID), opts...))
 	}
 	if !l.raceCheck {
 		if _, err := l.cli.Txn(ctx).Then(ops...).Commit(); err != nil {

@@ -104,7 +104,7 @@ func (s *LimitersTestSuite) tokenBucketBackends(ttl time.Duration) map[string]l.
 func (s *LimitersTestSuite) TestTokenBucketRealClock() {
 	clock := l.NewSystemClock()
 	for _, testCase := range tokenBucketUniformTestCases {
-		for name, bucket := range s.tokenBuckets(testCase.capacity, testCase.refillRate, time.Minute, clock) {
+		for name, bucket := range s.tokenBuckets(testCase.capacity, testCase.refillRate, 0, clock) {
 			s.Run(name, func() {
 				wg := sync.WaitGroup{}
 				// mu guards the miss variable below.
@@ -136,7 +136,7 @@ func (s *LimitersTestSuite) TestTokenBucketRealClock() {
 func (s *LimitersTestSuite) TestTokenBucketFakeClock() {
 	for _, testCase := range tokenBucketUniformTestCases {
 		clock := newFakeClock()
-		for name, bucket := range s.tokenBuckets(testCase.capacity, testCase.refillRate, time.Minute, clock) {
+		for name, bucket := range s.tokenBuckets(testCase.capacity, testCase.refillRate, 0, clock) {
 			s.Run(name, func() {
 				clock.reset()
 				miss := 0
@@ -159,7 +159,7 @@ func (s *LimitersTestSuite) TestTokenBucketFakeClock() {
 func (s *LimitersTestSuite) TestTokenBucketOverflow() {
 	clock := newFakeClock()
 	rate := 100 * time.Millisecond // should be shorter than TTL
-	for name, bucket := range s.tokenBuckets(2, rate, time.Minute, clock) {
+	for name, bucket := range s.tokenBuckets(2, rate, 0, clock) {
 		s.Run(name, func() {
 			clock.reset()
 			wait, err := bucket.Limit(context.TODO())
@@ -184,7 +184,7 @@ func (s *LimitersTestSuite) TestTokenBucketOverflow() {
 func (s *LimitersTestSuite) TestTokenBucketReset() {
 	clock := newFakeClock()
 	rate := 100 * time.Millisecond // should be shorter than TTL
-	for name, bucket := range s.tokenBuckets(2, rate, time.Minute, clock) {
+	for name, bucket := range s.tokenBuckets(2, rate, 0, clock) {
 		s.Run(name, func() {
 			clock.reset()
 			wait, err := bucket.Limit(context.TODO())
@@ -208,7 +208,7 @@ func (s *LimitersTestSuite) TestTokenBucketReset() {
 }
 
 func (s *LimitersTestSuite) TestTokenBucketRefill() {
-	for name, backend := range s.tokenBucketBackends(time.Minute) {
+	for name, backend := range s.tokenBucketBackends(0) {
 		s.Run(name, func() {
 			clock := newFakeClock()
 
@@ -257,7 +257,7 @@ func setTokenBucketStateInOldFormat(ctx context.Context, cli *redis.Client, pref
 func (s *LimitersTestSuite) TestTokenBucketRedisBackwardCompatibility() {
 	// Create a new TokenBucketRedis instance
 	prefix := uuid.New().String()
-	backend := l.NewTokenBucketRedis(s.redisClient, prefix, time.Minute, false)
+	backend := l.NewTokenBucketRedis(s.redisClient, prefix, 0, false)
 
 	// Write state using old format
 	ctx := context.Background()
@@ -267,7 +267,7 @@ func (s *LimitersTestSuite) TestTokenBucketRedisBackwardCompatibility() {
 	}
 
 	// Write directly to Redis using old format
-	err := setTokenBucketStateInOldFormat(ctx, s.redisClient, prefix, expectedState, time.Minute)
+	err := setTokenBucketStateInOldFormat(ctx, s.redisClient, prefix, expectedState, 0)
 	s.Require().NoError(err, "Failed to set state using old format")
 
 	// Read state using new format (State)
@@ -281,7 +281,7 @@ func (s *LimitersTestSuite) TestTokenBucketRedisBackwardCompatibility() {
 
 func (s *LimitersTestSuite) TestTokenBucketNoExpiration() {
 	clock := l.NewSystemClock()
-	buckets := s.tokenBuckets(1, time.Minute, 0, clock)
+	buckets := s.tokenBuckets(1, 0, 0, clock)
 
 	// Take all capacity from all buckets
 	for _, bucket := range buckets {
@@ -291,7 +291,7 @@ func (s *LimitersTestSuite) TestTokenBucketNoExpiration() {
 	// Wait for 2 seconds to check if it treats 0 TTL as infinite
 	clock.Sleep(2 * time.Second)
 
-	// Expect all buckets to be still filled
+	// Expect all buckets to be empty (as the data expired)
 	for name, bucket := range buckets {
 		s.Run(name, func() {
 			_, err := bucket.Limit(context.TODO())
@@ -302,7 +302,7 @@ func (s *LimitersTestSuite) TestTokenBucketNoExpiration() {
 
 func (s *LimitersTestSuite) TestTokenBucketTTLExpiration() {
 	clock := l.NewSystemClock()
-	buckets := s.tokenBuckets(1, time.Minute, time.Second, clock)
+	buckets := s.tokenBuckets(1, 0, time.Second, clock)
 
 	// Ignore in-memory bucket, as it has no expiration,
 	// ignore DynamoDB, as amazon/dynamodb-local doesn't support TTLs.
@@ -335,9 +335,9 @@ func BenchmarkTokenBuckets(b *testing.B) {
 	s.SetT(&testing.T{})
 	s.SetupSuite()
 	capacity := int64(1)
-	rate := 100 * time.Millisecond // should be shorter than TTL
+	rate := 100 * time.Millisecond
 	clock := newFakeClock()
-	buckets := s.tokenBuckets(capacity, rate, time.Second, clock)
+	buckets := s.tokenBuckets(capacity, rate, 0, clock)
 	for name, bucket := range buckets {
 		b.Run(name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {

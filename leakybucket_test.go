@@ -49,7 +49,7 @@ func (s *LimitersTestSuite) TestLeakyBucketRealClock() {
 	rate := time.Millisecond * 10
 	clock := l.NewSystemClock()
 	for _, requestRate := range []time.Duration{rate / 2} {
-		for name, bucket := range s.leakyBuckets(capacity, rate, time.Minute, clock) {
+		for name, bucket := range s.leakyBuckets(capacity, rate, 0, clock) {
 			s.Run(name, func() {
 				wg := sync.WaitGroup{}
 				mu := sync.Mutex{}
@@ -92,7 +92,7 @@ func (s *LimitersTestSuite) TestLeakyBucketFakeClock() {
 	rate := time.Millisecond * 100
 	clock := newFakeClock()
 	for _, requestRate := range []time.Duration{rate * 2, rate, rate / 2, rate / 3, rate / 4, 0} {
-		for name, bucket := range s.leakyBuckets(capacity, rate, time.Minute, clock) {
+		for name, bucket := range s.leakyBuckets(capacity, rate, 0, clock) {
 			s.Run(name, func() {
 				clock.reset()
 				start := clock.Now()
@@ -119,7 +119,7 @@ func (s *LimitersTestSuite) TestLeakyBucketOverflow() {
 	rate := 100 * time.Millisecond // should be shorter than TTL
 	capacity := int64(2)
 	clock := newFakeClock()
-	for name, bucket := range s.leakyBuckets(capacity, rate, time.Minute, clock) {
+	for name, bucket := range s.leakyBuckets(capacity, rate, 0, clock) {
 		s.Run(name, func() {
 			clock.reset()
 			// The first call has no wait since there were no calls before.
@@ -146,7 +146,7 @@ func (s *LimitersTestSuite) TestLeakyBucketOverflow() {
 
 func (s *LimitersTestSuite) TestLeakyBucketNoExpiration() {
 	clock := l.NewSystemClock()
-	buckets := s.leakyBuckets(1, time.Minute, 0, clock)
+	buckets := s.leakyBuckets(1, 0, 0, clock)
 
 	// Take all capacity from all buckets
 	for _, bucket := range buckets {
@@ -168,7 +168,7 @@ func (s *LimitersTestSuite) TestLeakyBucketNoExpiration() {
 
 func (s *LimitersTestSuite) TestLeakyBucketTTLExpiration() {
 	clock := l.NewSystemClock()
-	buckets := s.leakyBuckets(1, time.Minute, time.Second, clock)
+	buckets := s.leakyBuckets(1, 0, time.Second, clock)
 
 	// Ignore in-memory bucket, as it has no expiration,
 	// ignore DynamoDB, as amazon/dynamodb-local doesn't support TTLs.
@@ -187,7 +187,7 @@ func (s *LimitersTestSuite) TestLeakyBucketTTLExpiration() {
 	// Wait for 3 seconds to check if the items have been deleted successfully
 	clock.Sleep(3 * time.Second)
 
-	// Expect all buckets to be still filled
+	// Expect all buckets to be empty (as the data expired)
 	for name, bucket := range buckets {
 		s.Run(name, func() {
 			wait, err := bucket.Limit(context.TODO())
@@ -201,7 +201,7 @@ func (s *LimitersTestSuite) TestLeakyBucketReset() {
 	rate := 100 * time.Millisecond // should be shorter than TTL
 	capacity := int64(2)
 	clock := newFakeClock()
-	for name, bucket := range s.leakyBuckets(capacity, rate, time.Minute, clock) {
+	for name, bucket := range s.leakyBuckets(capacity, rate, 0, clock) {
 		s.Run(name, func() {
 			clock.reset()
 			// The first call has no wait since there were no calls before.
@@ -242,9 +242,9 @@ func BenchmarkLeakyBuckets(b *testing.B) {
 	s.SetT(&testing.T{})
 	s.SetupSuite()
 	capacity := int64(1)
-	rate := 100 * time.Millisecond // should be shorter than TTL
+	rate := 100 * time.Millisecond
 	clock := newFakeClock()
-	buckets := s.leakyBuckets(capacity, rate, time.Minute, clock)
+	buckets := s.leakyBuckets(capacity, rate, 0, clock)
 	for name, bucket := range buckets {
 		b.Run(name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
@@ -273,7 +273,7 @@ func setStateInOldFormat(ctx context.Context, cli *redis.Client, prefix string, 
 func (s *LimitersTestSuite) TestLeakyBucketRedisBackwardCompatibility() {
 	// Create a new LeakyBucketRedis instance
 	prefix := uuid.New().String()
-	backend := l.NewLeakyBucketRedis(s.redisClient, prefix, time.Minute, false)
+	backend := l.NewLeakyBucketRedis(s.redisClient, prefix, 0, false)
 
 	// Write state using old format
 	ctx := context.Background()
@@ -282,7 +282,7 @@ func (s *LimitersTestSuite) TestLeakyBucketRedisBackwardCompatibility() {
 	}
 
 	// Write directly to Redis using old format
-	err := setStateInOldFormat(ctx, s.redisClient, prefix, expectedState, time.Minute)
+	err := setStateInOldFormat(ctx, s.redisClient, prefix, expectedState, 0)
 	s.Require().NoError(err, "Failed to set state using old format")
 
 	// Read state using new format (State)
