@@ -273,7 +273,7 @@ func setStateInOldFormat(ctx context.Context, cli *redis.Client, prefix string, 
 func (s *LimitersTestSuite) TestLeakyBucketRedisBackwardCompatibility() {
 	// Create a new LeakyBucketRedis instance
 	prefix := uuid.New().String()
-	backend := l.NewLeakyBucketRedis(s.redisClient, prefix, 0, false)
+	backend := l.NewLeakyBucketRedis(s.redisClient, prefix, time.Minute, false)
 
 	// Write state using old format
 	ctx := context.Background()
@@ -282,7 +282,7 @@ func (s *LimitersTestSuite) TestLeakyBucketRedisBackwardCompatibility() {
 	}
 
 	// Write directly to Redis using old format
-	err := setStateInOldFormat(ctx, s.redisClient, prefix, expectedState, 0)
+	err := setStateInOldFormat(ctx, s.redisClient, prefix, expectedState, time.Minute)
 	s.Require().NoError(err, "Failed to set state using old format")
 
 	// Read state using new format (State)

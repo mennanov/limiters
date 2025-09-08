@@ -257,7 +257,7 @@ func setTokenBucketStateInOldFormat(ctx context.Context, cli *redis.Client, pref
 func (s *LimitersTestSuite) TestTokenBucketRedisBackwardCompatibility() {
 	// Create a new TokenBucketRedis instance
 	prefix := uuid.New().String()
-	backend := l.NewTokenBucketRedis(s.redisClient, prefix, 0, false)
+	backend := l.NewTokenBucketRedis(s.redisClient, prefix, time.Minute, false)
 
 	// Write state using old format
 	ctx := context.Background()
@@ -267,7 +267,7 @@ func (s *LimitersTestSuite) TestTokenBucketRedisBackwardCompatibility() {
 	}
 
 	// Write directly to Redis using old format
-	err := setTokenBucketStateInOldFormat(ctx, s.redisClient, prefix, expectedState, 0)
+	err := setTokenBucketStateInOldFormat(ctx, s.redisClient, prefix, expectedState, time.Minute)
 	s.Require().NoError(err, "Failed to set state using old format")
 
 	// Read state using new format (State)
