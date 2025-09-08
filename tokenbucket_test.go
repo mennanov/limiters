@@ -183,8 +183,8 @@ func (s *LimitersTestSuite) TestTokenBucketOverflow() {
 
 func (s *LimitersTestSuite) TestTokenTakeMaxOverflow() {
 	clock := newFakeClock()
-	rate := 100 * time.Millisecond // it should be less than TTL for proper check
-	for name, bucket := range s.tokenBuckets(3, rate, clock) {
+	rate := 100 * time.Millisecond
+	for name, bucket := range s.tokenBuckets(3, rate, 0, clock) {
 		s.Run(name, func() {
 			clock.reset()
 			// Take max, as it's below capacity.
