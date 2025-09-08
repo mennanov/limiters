@@ -281,7 +281,7 @@ func (s *LimitersTestSuite) TestTokenBucketRedisBackwardCompatibility() {
 
 func (s *LimitersTestSuite) TestTokenBucketNoExpiration() {
 	clock := l.NewSystemClock()
-	buckets := s.tokenBuckets(1, 0, 0, clock)
+	buckets := s.tokenBuckets(1, time.Minute, 0, clock)
 
 	// Take all capacity from all buckets
 	for _, bucket := range buckets {

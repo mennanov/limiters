@@ -146,7 +146,7 @@ func (s *LimitersTestSuite) TestLeakyBucketOverflow() {
 
 func (s *LimitersTestSuite) TestLeakyBucketNoExpiration() {
 	clock := l.NewSystemClock()
-	buckets := s.leakyBuckets(1, 0, 0, clock)
+	buckets := s.leakyBuckets(1, time.Minute, 0, clock)
 
 	// Take all capacity from all buckets
 	for _, bucket := range buckets {
