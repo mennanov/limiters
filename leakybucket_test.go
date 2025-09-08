@@ -168,7 +168,7 @@ func (s *LimitersTestSuite) TestLeakyBucketNoExpiration() {
 
 func (s *LimitersTestSuite) TestLeakyBucketTTLExpiration() {
 	clock := l.NewSystemClock()
-	buckets := s.leakyBuckets(1, 0, time.Second, clock)
+	buckets := s.leakyBuckets(1, time.Minute, time.Second, clock)
 
 	// Ignore in-memory bucket, as it has no expiration,
 	// ignore DynamoDB, as amazon/dynamodb-local doesn't support TTLs.

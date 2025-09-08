@@ -302,7 +302,7 @@ func (s *LimitersTestSuite) TestTokenBucketNoExpiration() {
 
 func (s *LimitersTestSuite) TestTokenBucketTTLExpiration() {
 	clock := l.NewSystemClock()
-	buckets := s.tokenBuckets(1, 0, time.Second, clock)
+	buckets := s.tokenBuckets(1, time.Minute, time.Second, clock)
 
 	// Ignore in-memory bucket, as it has no expiration,
 	// ignore DynamoDB, as amazon/dynamodb-local doesn't support TTLs.
