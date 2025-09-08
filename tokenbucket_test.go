@@ -158,7 +158,7 @@ func (s *LimitersTestSuite) TestTokenBucketFakeClock() {
 
 func (s *LimitersTestSuite) TestTokenBucketOverflow() {
 	clock := newFakeClock()
-	rate := 100 * time.Millisecond // should be shorter than TTL
+	rate := 100 * time.Millisecond
 	for name, bucket := range s.tokenBuckets(2, rate, 0, clock) {
 		s.Run(name, func() {
 			clock.reset()
@@ -183,7 +183,7 @@ func (s *LimitersTestSuite) TestTokenBucketOverflow() {
 
 func (s *LimitersTestSuite) TestTokenBucketReset() {
 	clock := newFakeClock()
-	rate := 100 * time.Millisecond // should be shorter than TTL
+	rate := 100 * time.Millisecond
 	for name, bucket := range s.tokenBuckets(2, rate, 0, clock) {
 		s.Run(name, func() {
 			clock.reset()
@@ -291,7 +291,7 @@ func (s *LimitersTestSuite) TestTokenBucketNoExpiration() {
 	// Wait for 2 seconds to check if it treats 0 TTL as infinite
 	clock.Sleep(2 * time.Second)
 
-	// Expect all buckets to be empty (as the data expired)
+	// Expect all buckets to be still filled
 	for name, bucket := range buckets {
 		s.Run(name, func() {
 			_, err := bucket.Limit(context.TODO())
@@ -320,7 +320,7 @@ func (s *LimitersTestSuite) TestTokenBucketTTLExpiration() {
 	// Wait for 3 seconds to check if the items have been deleted successfully
 	clock.Sleep(3 * time.Second)
 
-	// Expect all buckets to be still filled
+	// Expect all buckets to be still empty (as the data expired)
 	for name, bucket := range buckets {
 		s.Run(name, func() {
 			wait, err := bucket.Limit(context.TODO())
