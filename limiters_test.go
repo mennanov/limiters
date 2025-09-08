@@ -209,10 +209,10 @@ func (s *LimitersTestSuite) TestLimitContextCancelled() {
 	capacity := int64(2)
 	rate := time.Second
 	limiters := make(map[string]interface{})
-	for n, b := range s.tokenBuckets(capacity, rate, clock) {
+	for n, b := range s.tokenBuckets(capacity, rate, time.Second, clock) {
 		limiters[n] = b
 	}
-	for n, b := range s.leakyBuckets(capacity, rate, clock) {
+	for n, b := range s.leakyBuckets(capacity, rate, time.Second, clock) {
 		limiters[n] = b
 	}
 	for n, w := range s.fixedWindows(capacity, rate, clock) {

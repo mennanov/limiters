@@ -6,6 +6,7 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"sync"
@@ -253,6 +254,10 @@ func (t *TokenBucketEtcd) State(ctx context.Context) (TokenBucketState, error) {
 	}
 	state := TokenBucketState{}
 	parsed := 0
+	if t.ttl == 0 {
+		// Ignore lease when there is no expiration
+		parsed |= 4
+	}
 	var v int64
 	for _, kv := range r.Kvs {
 		switch string(kv.Key) {
@@ -291,7 +296,7 @@ func (t *TokenBucketEtcd) State(ctx context.Context) (TokenBucketState, error) {
 
 // createLease creates a new lease in etcd and updates the t.leaseID value.
 func (t *TokenBucketEtcd) createLease(ctx context.Context) error {
-	lease, err := t.cli.Grant(ctx, int64(t.ttl/time.Nanosecond))
+	lease, err := t.cli.Grant(ctx, int64(math.Ceil(t.ttl.Seconds())))
 	if err != nil {
 		return errors.Wrap(err, "failed to create a new lease in etcd")
 	}
@@ -302,12 +307,19 @@ func (t *TokenBucketEtcd) createLease(ctx context.Context) error {
 
 // save saves the state to etcd using the existing lease and the fencing token.
 func (t *TokenBucketEtcd) save(ctx context.Context, state TokenBucketState) error {
+	var opts []clientv3.OpOption
+	if t.ttl > 0 {
+		opts = append(opts, clientv3.WithLease(t.leaseID))
+	}
+	ops := []clientv3.Op{
+		clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBAvailable), fmt.Sprintf("%d", state.Available), opts...),
+		clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBLast), fmt.Sprintf("%d", state.Last), opts...),
+	}
+	if t.ttl > 0 {
+		ops = append(ops, clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBLease), fmt.Sprintf("%d", t.leaseID), opts...))
+	}
 	if !t.raceCheck {
-		if _, err := t.cli.Txn(ctx).Then(
-			clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBAvailable), fmt.Sprintf("%d", state.Available), clientv3.WithLease(t.leaseID)),
-			clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBLast), fmt.Sprintf("%d", state.Last), clientv3.WithLease(t.leaseID)),
-			clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBLease), fmt.Sprintf("%d", t.leaseID), clientv3.WithLease(t.leaseID)),
-		).Commit(); err != nil {
+		if _, err := t.cli.Txn(ctx).Then(ops...).Commit(); err != nil {
 			return errors.Wrap(err, "failed to commit a transaction to etcd")
 		}
 
@@ -316,11 +328,7 @@ func (t *TokenBucketEtcd) save(ctx context.Context, state TokenBucketState) erro
 	// Put the keys only if they have not been modified since the most recent read.
 	r, err := t.cli.Txn(ctx).If(
 		clientv3.Compare(clientv3.Version(etcdKey(t.prefix, etcdKeyTBLast)), ">", t.lastVersion),
-	).Else(
-		clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBAvailable), fmt.Sprintf("%d", state.Available), clientv3.WithLease(t.leaseID)),
-		clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBLast), fmt.Sprintf("%d", state.Last), clientv3.WithLease(t.leaseID)),
-		clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBLease), fmt.Sprintf("%d", t.leaseID), clientv3.WithLease(t.leaseID)),
-	).Commit()
+	).Else(ops...).Commit()
 	if err != nil {
 		return errors.Wrap(err, "failed to commit a transaction to etcd")
 	}
@@ -334,6 +342,10 @@ func (t *TokenBucketEtcd) save(ctx context.Context, state TokenBucketState) erro
 
 // SetState updates the state of the bucket.
 func (t *TokenBucketEtcd) SetState(ctx context.Context, state TokenBucketState) error {
+	if t.ttl == 0 {
+		// Avoid maintaining the lease when it has no TTL
+		return t.save(ctx, state)
+	}
 	if t.leaseID == 0 {
 		// Lease does not exist, create one.
 		if err := t.createLease(ctx); err != nil {
@@ -568,7 +580,11 @@ func (t *TokenBucketRedis) SetState(ctx context.Context, state TokenBucketState)
 			return
 		}
 
-		script := `
+		callScript := `redis.call('set', KEYS[1], ARGV[1], 'PX', ARGV[3])`
+		if t.ttl == 0 {
+			callScript = `redis.call('set', KEYS[1], ARGV[1])`
+		}
+		script := fmt.Sprintf(`
 			local current = redis.call('get', KEYS[1])
 			if current then
 				local data = cjson.decode(current)
@@ -576,9 +592,9 @@ func (t *TokenBucketRedis) SetState(ctx context.Context, state TokenBucketState)
 					return 'RACE_CONDITION'
 				end
 			end
-			redis.call('set', KEYS[1], ARGV[1], 'PX', ARGV[3])
+			%s
 			return 'OK'
-		`
+		`, callScript)
 		result, err := t.cli.Eval(ctx, script, []string{key}, value, t.lastVersion, int64(t.ttl/time.Millisecond)).Result()
 		if err != nil {
 			errCh <- err
@@ -642,12 +658,10 @@ func NewTokenBucketMemcached(cli *memcache.Client, key string, ttl time.Duration
 // State gets the bucket's state from Memcached.
 func (t *TokenBucketMemcached) State(ctx context.Context) (TokenBucketState, error) {
 	var item *memcache.Item
-	var state TokenBucketState
 	var err error
-
+	var state TokenBucketState
 	done := make(chan struct{}, 1)
 	t.casId = 0
-
 	go func() {
 		defer close(done)
 		item, err = t.cli.Get(t.key)
@@ -690,10 +704,16 @@ func (t *TokenBucketMemcached) SetState(ctx context.Context, state TokenBucketSt
 	go func() {
 		defer close(done)
 		item := &memcache.Item{
-			Key:        t.key,
-			Value:      b.Bytes(),
-			CasID:      t.casId,
-			Expiration: int32(time.Now().Add(t.ttl).Unix()),
+			Key:   t.key,
+			Value: b.Bytes(),
+			CasID: t.casId,
+		}
+		if t.ttl > 30*24*time.Hour {
+			// If the value is over 30 days, it treats it as UNIX timestamp.
+			item.Expiration = int32(time.Now().Add(t.ttl).Unix())
+		} else if t.ttl > 0 {
+			// Memcached supports expiration in seconds. It's more precise way.
+			item.Expiration = int32(math.Ceil(t.ttl.Seconds()))
 		}
 		if t.raceCheck && t.casId > 0 {
 			err = t.cli.CompareAndSwap(item)
@@ -821,7 +841,9 @@ func (t *TokenBucketDynamoDB) getPutItemInputFromState(state TokenBucketState) *
 
 	item[dynamoDBBucketLastKey] = &types.AttributeValueMemberN{Value: strconv.FormatInt(state.Last, 10)}
 	item[dynamoDBBucketVersionKey] = &types.AttributeValueMemberN{Value: strconv.FormatInt(t.latestVersion+1, 10)}
-	item[t.tableProps.TTLFieldName] = &types.AttributeValueMemberN{Value: strconv.FormatInt(time.Now().Add(t.ttl).Unix(), 10)}
+	if t.ttl > 0 {
+		item[t.tableProps.TTLFieldName] = &types.AttributeValueMemberN{Value: strconv.FormatInt(time.Now().Add(t.ttl).Unix(), 10)}
+	}
 	item[dynamoDBBucketAvailableKey] = &types.AttributeValueMemberN{Value: strconv.FormatInt(state.Available, 10)}
 
 	input := &dynamodb.PutItemInput{
@@ -868,7 +890,7 @@ type CosmosDBTokenBucketItem struct {
 	PartitionKey string           `json:"partitionKey"`
 	State        TokenBucketState `json:"state"`
 	Version      int64            `json:"version"`
-	TTL          int64            `json:"ttl"`
+	TTL          int64            `json:"ttl,omitempty"`
 }
 
 // TokenBucketCosmosDB is a CosmosDB implementation of a TokenBucketStateBackend.
@@ -914,10 +936,6 @@ func (t *TokenBucketCosmosDB) State(ctx context.Context) (TokenBucketState, erro
 		return TokenBucketState{}, errors.Wrap(err, "failed to decode state from Cosmos DB")
 	}
 
-	if time.Now().Unix() > item.TTL {
-		return TokenBucketState{}, nil
-	}
-
 	if t.raceCheck {
 		t.latestVersion = item.Version
 	}
@@ -934,7 +952,9 @@ func (t *TokenBucketCosmosDB) SetState(ctx context.Context, state TokenBucketSta
 		PartitionKey: t.partitionKey,
 		State:        state,
 		Version:      t.latestVersion + 1,
-		TTL:          time.Now().Add(t.ttl).Unix(),
+	}
+	if t.ttl > 0 {
+		item.TTL = int64(math.Ceil(t.ttl.Seconds()))
 	}
 
 	value, err := json.Marshal(item)
