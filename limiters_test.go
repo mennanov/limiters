@@ -222,6 +222,7 @@ func (s *LimitersTestSuite) TestLimitContextCancelled() {
 	for n, b := range s.tokenBuckets(capacity, rate, time.Second, clock) {
 		limiters[n] = b
 	}
+
 	for n, b := range s.leakyBuckets(capacity, rate, time.Second, clock) {
 		limiters[n] = b
 	}

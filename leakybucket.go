@@ -209,6 +209,7 @@ func (l *LeakyBucketEtcd) State(ctx context.Context) (LeakyBucketState, error) {
 	}
 
 	state := LeakyBucketState{}
+
 	parsed := 0
 	if l.ttl == 0 {
 		// Ignore lease when there is no expiration
@@ -265,14 +266,17 @@ func (l *LeakyBucketEtcd) save(ctx context.Context, state LeakyBucketState) erro
 	if l.ttl > 0 {
 		opts = append(opts, clientv3.WithLease(l.leaseID))
 	}
+
 	ops := []clientv3.Op{
 		clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBLast), fmt.Sprintf("%d", state.Last), opts...),
 	}
 	if l.ttl > 0 {
 		ops = append(ops, clientv3.OpPut(etcdKey(l.prefix, etcdKeyLBLease), fmt.Sprintf("%d", l.leaseID), opts...))
 	}
+
 	if !l.raceCheck {
-		if _, err := l.cli.Txn(ctx).Then(ops...).Commit(); err != nil {
+		_, err := l.cli.Txn(ctx).Then(ops...).Commit()
+		if err != nil {
 			return errors.Wrap(err, "failed to commit a transaction to etcd")
 		}
 
@@ -299,6 +303,7 @@ func (l *LeakyBucketEtcd) SetState(ctx context.Context, state LeakyBucketState) 
 		// Avoid maintaining the lease when it has no TTL
 		return l.save(ctx, state)
 	}
+
 	if l.leaseID == 0 {
 		// Lease does not exist, create one.
 		err := l.createLease(ctx)
@@ -527,6 +532,7 @@ func (t *LeakyBucketRedis) SetState(ctx context.Context, state LeakyBucketState)
 		if t.ttl == 0 {
 			callScript = `redis.call('set', KEYS[1], ARGV[1])`
 		}
+
 		script := fmt.Sprintf(`
 			local current = redis.call('get', KEYS[1])
 			if current then
@@ -538,6 +544,7 @@ func (t *LeakyBucketRedis) SetState(ctx context.Context, state LeakyBucketState)
 			%s
 			return 'OK'
 		`, callScript)
+
 		result, err := t.cli.Eval(ctx, script, []string{key}, value, t.lastVersion, int64(t.ttl/time.Millisecond)).Result()
 		if err != nil {
 			errCh <- err
@@ -598,11 +605,15 @@ func NewLeakyBucketMemcached(cli *memcache.Client, key string, ttl time.Duration
 
 // State gets the bucket's state from Memcached.
 func (t *LeakyBucketMemcached) State(ctx context.Context) (LeakyBucketState, error) {
-	var item *memcache.Item
-	var err error
-	var state LeakyBucketState
+	var (
+		item  *memcache.Item
+		err   error
+		state LeakyBucketState
+	)
+
 	done := make(chan struct{}, 1)
 	t.casId = 0
+
 	go func() {
 		defer close(done)
 
@@ -666,6 +677,7 @@ func (t *LeakyBucketMemcached) SetState(ctx context.Context, state LeakyBucketSt
 			// Memcached supports expiration in seconds. It's more precise way.
 			item.Expiration = int32(math.Ceil(t.ttl.Seconds()))
 		}
+
 		if t.raceCheck && t.casId > 0 {
 			err = t.cli.CompareAndSwap(item)
 		} else {
@@ -792,6 +804,7 @@ func (t *LeakyBucketDynamoDB) getPutItemInputFromState(state LeakyBucketState) *
 	}
 
 	item[dynamoDBBucketLastKey] = &types.AttributeValueMemberN{Value: strconv.FormatInt(state.Last, 10)}
+
 	item[dynamoDBBucketVersionKey] = &types.AttributeValueMemberN{Value: strconv.FormatInt(t.latestVersion+1, 10)}
 	if t.ttl > 0 {
 		item[t.tableProps.TTLFieldName] = &types.AttributeValueMemberN{Value: strconv.FormatInt(time.Now().Add(t.ttl).Unix(), 10)}

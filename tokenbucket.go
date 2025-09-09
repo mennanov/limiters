@@ -83,7 +83,9 @@ func NewTokenBucket(capacity int64, refillRate time.Duration, locker DistLocker,
 func (t *TokenBucket) takeMinMax(ctx context.Context, minTokens, maxTokens int64) (int64, time.Duration, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if err := t.locker.Lock(ctx); err != nil {
+
+	err := t.locker.Lock(ctx)
+	if err != nil {
 		return 0, 0, err
 	}
 
@@ -131,7 +133,9 @@ func (t *TokenBucket) takeMinMax(ctx context.Context, minTokens, maxTokens int64
 
 	// Take the tokens from the bucket.
 	state.Available -= tokens
-	if err = t.backend.SetState(ctx, state); err != nil {
+
+	err = t.backend.SetState(ctx, state)
+	if err != nil {
 		return 0, 0, err
 	}
 
@@ -289,11 +293,13 @@ func (t *TokenBucketEtcd) State(ctx context.Context) (TokenBucketState, error) {
 	}
 
 	state := TokenBucketState{}
+
 	parsed := 0
 	if t.ttl == 0 {
 		// Ignore lease when there is no expiration
 		parsed |= 4
 	}
+
 	var v int64
 
 	for _, kv := range r.Kvs {
@@ -353,6 +359,7 @@ func (t *TokenBucketEtcd) save(ctx context.Context, state TokenBucketState) erro
 	if t.ttl > 0 {
 		opts = append(opts, clientv3.WithLease(t.leaseID))
 	}
+
 	ops := []clientv3.Op{
 		clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBAvailable), fmt.Sprintf("%d", state.Available), opts...),
 		clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBLast), fmt.Sprintf("%d", state.Last), opts...),
@@ -360,8 +367,10 @@ func (t *TokenBucketEtcd) save(ctx context.Context, state TokenBucketState) erro
 	if t.ttl > 0 {
 		ops = append(ops, clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBLease), fmt.Sprintf("%d", t.leaseID), opts...))
 	}
+
 	if !t.raceCheck {
-		if _, err := t.cli.Txn(ctx).Then(ops...).Commit(); err != nil {
+		_, err := t.cli.Txn(ctx).Then(ops...).Commit()
+		if err != nil {
 			return errors.Wrap(err, "failed to commit a transaction to etcd")
 		}
 
@@ -388,6 +397,7 @@ func (t *TokenBucketEtcd) SetState(ctx context.Context, state TokenBucketState) 
 		// Avoid maintaining the lease when it has no TTL
 		return t.save(ctx, state)
 	}
+
 	if t.leaseID == 0 {
 		// Lease does not exist, create one.
 		err := t.createLease(ctx)
@@ -648,6 +658,7 @@ func (t *TokenBucketRedis) SetState(ctx context.Context, state TokenBucketState)
 		if t.ttl == 0 {
 			callScript = `redis.call('set', KEYS[1], ARGV[1])`
 		}
+
 		script := fmt.Sprintf(`
 			local current = redis.call('get', KEYS[1])
 			if current then
@@ -659,6 +670,7 @@ func (t *TokenBucketRedis) SetState(ctx context.Context, state TokenBucketState)
 			%s
 			return 'OK'
 		`, callScript)
+
 		result, err := t.cli.Eval(ctx, script, []string{key}, value, t.lastVersion, int64(t.ttl/time.Millisecond)).Result()
 		if err != nil {
 			errCh <- err
@@ -723,11 +735,15 @@ func NewTokenBucketMemcached(cli *memcache.Client, key string, ttl time.Duration
 
 // State gets the bucket's state from Memcached.
 func (t *TokenBucketMemcached) State(ctx context.Context) (TokenBucketState, error) {
-	var item *memcache.Item
-	var err error
-	var state TokenBucketState
+	var (
+		item  *memcache.Item
+		err   error
+		state TokenBucketState
+	)
+
 	done := make(chan struct{}, 1)
 	t.casId = 0
+
 	go func() {
 		defer close(done)
 
@@ -790,6 +806,7 @@ func (t *TokenBucketMemcached) SetState(ctx context.Context, state TokenBucketSt
 			// Memcached supports expiration in seconds. It's more precise way.
 			item.Expiration = int32(math.Ceil(t.ttl.Seconds()))
 		}
+
 		if t.raceCheck && t.casId > 0 {
 			err = t.cli.CompareAndSwap(item)
 		} else {
@@ -918,10 +935,12 @@ func (t *TokenBucketDynamoDB) getPutItemInputFromState(state TokenBucketState) *
 	}
 
 	item[dynamoDBBucketLastKey] = &types.AttributeValueMemberN{Value: strconv.FormatInt(state.Last, 10)}
+
 	item[dynamoDBBucketVersionKey] = &types.AttributeValueMemberN{Value: strconv.FormatInt(t.latestVersion+1, 10)}
 	if t.ttl > 0 {
 		item[t.tableProps.TTLFieldName] = &types.AttributeValueMemberN{Value: strconv.FormatInt(time.Now().Add(t.ttl).Unix(), 10)}
 	}
+
 	item[dynamoDBBucketAvailableKey] = &types.AttributeValueMemberN{Value: strconv.FormatInt(state.Available, 10)}
 
 	input := &dynamodb.PutItemInput{

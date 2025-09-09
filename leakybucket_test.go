@@ -260,6 +260,7 @@ func (s *LimitersTestSuite) TestLeakyBucketMemcachedExpiry() {
 	s.Require().NoError(err)
 	s.NotEqual(int64(0), state.Last, "Last should be set after token takes")
 	time.Sleep(ttl + 1500*time.Millisecond)
+
 	state, err = backend.State(ctx)
 	s.Require().NoError(err)
 	s.Equal(int64(0), state.Last, "State should be zero after expiry, got: %+v", state)
