@@ -74,17 +74,17 @@ func NewTokenBucket(capacity int64, refillRate time.Duration, locker DistLocker,
 	}
 }
 
-// Take takes tokens from the bucket.
+// takeMinMax takes between minTokens and maxTokens tokens from the bucket, depending on availability.
 //
-// It returns a zero duration and a nil error if the bucket has sufficient amount of tokens.
+// It returns the number of tokens actually taken, zero duration, and nil error if at least minTokens are available.
 //
-// It returns ErrLimitExhausted if the amount of available tokens is less than requested. In this case the returned
-// duration is the amount of time to wait to retry the request.
-func (t *TokenBucket) Take(ctx context.Context, tokens int64) (time.Duration, error) {
+// If fewer than minTokens are available, it returns 0 taken, duration indicating how long to wait before retrying, and ErrLimitExhausted error.
+// The wait duration is computed based on the refill rate and the deficit to reach minTokens.
+func (t *TokenBucket) takeMinMax(ctx context.Context, minTokens, maxTokens int64) (int64, time.Duration, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if err := t.locker.Lock(ctx); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	defer func() {
 		if err := t.locker.Unlock(ctx); err != nil {
@@ -93,7 +93,7 @@ func (t *TokenBucket) Take(ctx context.Context, tokens int64) (time.Duration, er
 	}()
 	state, err := t.backend.State(ctx)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	if state.isZero() {
 		// Initially the bucket is full.
@@ -113,16 +113,44 @@ func (t *TokenBucket) Take(ctx context.Context, tokens int64) (time.Duration, er
 		}
 	}
 
-	if tokens > state.Available {
-		return t.refillRate * time.Duration(tokens-state.Available), ErrLimitExhausted
+	if minTokens > state.Available {
+		return 0, t.refillRate * time.Duration(minTokens-state.Available), ErrLimitExhausted
 	}
+
+	// Take as many tokens between minTokens and maxTokens as possible.
+	tokens := maxTokens
+	if tokens > state.Available {
+		tokens = state.Available
+	}
+
 	// Take the tokens from the bucket.
 	state.Available -= tokens
 	if err = t.backend.SetState(ctx, state); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
-	return 0, nil
+	return tokens, 0, nil
+}
+
+// TakeMax takes up to maxTokens tokens from the bucket, depending on availability.
+//
+// It returns the number of tokens actually taken, and error in case internal action will fail.
+func (t *TokenBucket) TakeMax(ctx context.Context, tokens int64) (int64, error) {
+	taken, _, err := t.takeMinMax(ctx, 0, tokens)
+
+	return taken, err
+}
+
+// Take takes tokens from the bucket.
+//
+// It returns a zero duration and a nil error if the bucket has sufficient amount of tokens.
+//
+// It returns ErrLimitExhausted if the amount of available tokens is less than requested. In this case the returned
+// duration is the amount of time to wait to retry the request.
+func (t *TokenBucket) Take(ctx context.Context, tokens int64) (time.Duration, error) {
+	_, duration, err := t.takeMinMax(ctx, tokens, tokens)
+
+	return duration, err
 }
 
 // Limit takes 1 token from the bucket.
