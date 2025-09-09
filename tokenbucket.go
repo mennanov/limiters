@@ -83,25 +83,33 @@ func NewTokenBucket(capacity int64, refillRate time.Duration, locker DistLocker,
 func (t *TokenBucket) takeMinMax(ctx context.Context, minTokens, maxTokens int64) (int64, time.Duration, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if err := t.locker.Lock(ctx); err != nil {
+
+	err := t.locker.Lock(ctx)
+	if err != nil {
 		return 0, 0, err
 	}
+
 	defer func() {
-		if err := t.locker.Unlock(ctx); err != nil {
+		err := t.locker.Unlock(ctx)
+		if err != nil {
 			t.logger.Log(err)
 		}
 	}()
+
 	state, err := t.backend.State(ctx)
 	if err != nil {
 		return 0, 0, err
 	}
+
 	if state.isZero() {
 		// Initially the bucket is full.
 		state.Available = t.capacity
 	}
+
 	now := t.clock.Now().UnixNano()
 	// Refill the bucket.
 	tokensToAdd := (now - state.Last) / int64(t.refillRate)
+
 	partialTime := (now - state.Last) % int64(t.refillRate)
 	if tokensToAdd > 0 {
 		if tokensToAdd+state.Available < t.capacity {
@@ -125,7 +133,9 @@ func (t *TokenBucket) takeMinMax(ctx context.Context, minTokens, maxTokens int64
 
 	// Take the tokens from the bucket.
 	state.Available -= tokens
-	if err = t.backend.SetState(ctx, state); err != nil {
+
+	err = t.backend.SetState(ctx, state)
+	if err != nil {
 		return 0, 0, err
 	}
 
@@ -276,17 +286,22 @@ func (t *TokenBucketEtcd) State(ctx context.Context) (TokenBucketState, error) {
 	if err != nil {
 		return TokenBucketState{}, errors.Wrapf(err, "failed to get keys in range ['%s', '%s') from etcd", t.prefix, incPrefix(t.prefix))
 	}
+
 	if len(r.Kvs) == 0 {
 		// State not found, return zero valued state.
 		return TokenBucketState{}, nil
 	}
+
 	state := TokenBucketState{}
+
 	parsed := 0
 	if t.ttl == 0 {
 		// Ignore lease when there is no expiration
 		parsed |= 4
 	}
+
 	var v int64
+
 	for _, kv := range r.Kvs {
 		switch string(kv.Key) {
 		case etcdKey(t.prefix, etcdKeyTBAvailable):
@@ -294,6 +309,7 @@ func (t *TokenBucketEtcd) State(ctx context.Context) (TokenBucketState, error) {
 			if err != nil {
 				return TokenBucketState{}, err
 			}
+
 			state.Available = v
 			parsed |= 1
 
@@ -302,6 +318,7 @@ func (t *TokenBucketEtcd) State(ctx context.Context) (TokenBucketState, error) {
 			if err != nil {
 				return TokenBucketState{}, err
 			}
+
 			state.Last = v
 			parsed |= 2
 			t.lastVersion = kv.Version
@@ -311,10 +328,12 @@ func (t *TokenBucketEtcd) State(ctx context.Context) (TokenBucketState, error) {
 			if err != nil {
 				return TokenBucketState{}, err
 			}
+
 			t.leaseID = clientv3.LeaseID(v)
 			parsed |= 4
 		}
 	}
+
 	if parsed != 7 {
 		return TokenBucketState{}, errors.New("failed to get state from etcd: some keys are missing")
 	}
@@ -328,6 +347,7 @@ func (t *TokenBucketEtcd) createLease(ctx context.Context) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to create a new lease in etcd")
 	}
+
 	t.leaseID = lease.ID
 
 	return nil
@@ -339,6 +359,7 @@ func (t *TokenBucketEtcd) save(ctx context.Context, state TokenBucketState) erro
 	if t.ttl > 0 {
 		opts = append(opts, clientv3.WithLease(t.leaseID))
 	}
+
 	ops := []clientv3.Op{
 		clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBAvailable), fmt.Sprintf("%d", state.Available), opts...),
 		clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBLast), fmt.Sprintf("%d", state.Last), opts...),
@@ -346,8 +367,10 @@ func (t *TokenBucketEtcd) save(ctx context.Context, state TokenBucketState) erro
 	if t.ttl > 0 {
 		ops = append(ops, clientv3.OpPut(etcdKey(t.prefix, etcdKeyTBLease), fmt.Sprintf("%d", t.leaseID), opts...))
 	}
+
 	if !t.raceCheck {
-		if _, err := t.cli.Txn(ctx).Then(ops...).Commit(); err != nil {
+		_, err := t.cli.Txn(ctx).Then(ops...).Commit()
+		if err != nil {
 			return errors.Wrap(err, "failed to commit a transaction to etcd")
 		}
 
@@ -374,18 +397,22 @@ func (t *TokenBucketEtcd) SetState(ctx context.Context, state TokenBucketState) 
 		// Avoid maintaining the lease when it has no TTL
 		return t.save(ctx, state)
 	}
+
 	if t.leaseID == 0 {
 		// Lease does not exist, create one.
-		if err := t.createLease(ctx); err != nil {
+		err := t.createLease(ctx)
+		if err != nil {
 			return err
 		}
 		// No need to send KeepAlive for the newly created lease: save the state immediately.
 		return t.save(ctx, state)
 	}
 	// Send the KeepAlive request to extend the existing lease.
-	if _, err := t.cli.KeepAliveOnce(ctx, t.leaseID); errors.Is(err, rpctypes.ErrLeaseNotFound) {
+	_, err := t.cli.KeepAliveOnce(ctx, t.leaseID)
+	if errors.Is(err, rpctypes.ErrLeaseNotFound) {
 		// Create a new lease since the current one has expired.
-		if err = t.createLease(ctx); err != nil {
+		err = t.createLease(ctx)
+		if err != nil {
 			return err
 		}
 	} else if err != nil {
@@ -452,8 +479,11 @@ func NewTokenBucketRedis(cli redis.UniversalClient, prefix string, ttl time.Dura
 
 // Deprecated: Legacy format support will be removed in a future version.
 func (t *TokenBucketRedis) oldState(ctx context.Context) (TokenBucketState, error) {
-	var values []interface{}
-	var err error
+	var (
+		values []interface{}
+		err    error
+	)
+
 	done := make(chan struct{}, 1)
 
 	if t.raceCheck {
@@ -463,6 +493,7 @@ func (t *TokenBucketRedis) oldState(ctx context.Context) (TokenBucketState, erro
 
 	go func() {
 		defer close(done)
+
 		keys := []string{
 			redisKey(t.prefix, redisKeyTBLast),
 			redisKey(t.prefix, redisKeyTBAvailable),
@@ -470,6 +501,7 @@ func (t *TokenBucketRedis) oldState(ctx context.Context) (TokenBucketState, erro
 		if t.raceCheck {
 			keys = append(keys, redisKey(t.prefix, redisKeyTBVersion))
 		}
+
 		values, err = t.cli.MGet(ctx, keys...).Result()
 	}()
 
@@ -483,7 +515,9 @@ func (t *TokenBucketRedis) oldState(ctx context.Context) (TokenBucketState, erro
 	if err != nil {
 		return TokenBucketState{}, errors.Wrap(err, "failed to get keys from redis")
 	}
+
 	nilAny := false
+
 	for _, v := range values {
 		if v == nil {
 			nilAny = true
@@ -491,6 +525,7 @@ func (t *TokenBucketRedis) oldState(ctx context.Context) (TokenBucketState, erro
 			break
 		}
 	}
+
 	if nilAny || errors.Is(err, redis.Nil) {
 		// Keys don't exist, return the initial state.
 		return TokenBucketState{}, nil
@@ -500,10 +535,12 @@ func (t *TokenBucketRedis) oldState(ctx context.Context) (TokenBucketState, erro
 	if err != nil {
 		return TokenBucketState{}, err
 	}
+
 	available, err := strconv.ParseInt(values[1].(string), 10, 64)
 	if err != nil {
 		return TokenBucketState{}, err
 	}
+
 	if t.raceCheck {
 		t.lastVersion, err = strconv.ParseInt(values[2].(string), 10, 64)
 		if err != nil {
@@ -520,8 +557,10 @@ func (t *TokenBucketRedis) oldState(ctx context.Context) (TokenBucketState, erro
 // State gets the bucket's state from Redis.
 func (t *TokenBucketRedis) State(ctx context.Context) (TokenBucketState, error) {
 	var err error
+
 	done := make(chan struct{}, 1)
 	errCh := make(chan error, 1)
+
 	var state TokenBucketState
 
 	if t.raceCheck {
@@ -531,7 +570,9 @@ func (t *TokenBucketRedis) State(ctx context.Context) (TokenBucketState, error) 
 
 	go func() {
 		defer close(done)
+
 		key := redisKey(t.prefix, "state")
+
 		value, err := t.cli.Get(ctx, key).Result()
 		if err != nil && !errors.Is(err, redis.Nil) {
 			errCh <- err
@@ -551,7 +592,9 @@ func (t *TokenBucketRedis) State(ctx context.Context) (TokenBucketState, error) 
 			State   TokenBucketState `json:"state"`
 			Version int64            `json:"version"`
 		}
-		if err = json.Unmarshal([]byte(value), &item); err != nil {
+
+		err = json.Unmarshal([]byte(value), &item)
+		if err != nil {
 			errCh <- err
 
 			return
@@ -561,6 +604,7 @@ func (t *TokenBucketRedis) State(ctx context.Context) (TokenBucketState, error) 
 		if t.raceCheck {
 			t.lastVersion = item.Version
 		}
+
 		errCh <- nil
 	}()
 
@@ -581,11 +625,13 @@ func (t *TokenBucketRedis) State(ctx context.Context) (TokenBucketState, error) 
 // SetState updates the state in Redis.
 func (t *TokenBucketRedis) SetState(ctx context.Context, state TokenBucketState) error {
 	var err error
+
 	done := make(chan struct{}, 1)
 	errCh := make(chan error, 1)
 
 	go func() {
 		defer close(done)
+
 		key := redisKey(t.prefix, "state")
 		item := struct {
 			State   TokenBucketState `json:"state"`
@@ -612,6 +658,7 @@ func (t *TokenBucketRedis) SetState(ctx context.Context, state TokenBucketState)
 		if t.ttl == 0 {
 			callScript = `redis.call('set', KEYS[1], ARGV[1])`
 		}
+
 		script := fmt.Sprintf(`
 			local current = redis.call('get', KEYS[1])
 			if current then
@@ -623,17 +670,20 @@ func (t *TokenBucketRedis) SetState(ctx context.Context, state TokenBucketState)
 			%s
 			return 'OK'
 		`, callScript)
+
 		result, err := t.cli.Eval(ctx, script, []string{key}, value, t.lastVersion, int64(t.ttl/time.Millisecond)).Result()
 		if err != nil {
 			errCh <- err
 
 			return
 		}
+
 		if result == "RACE_CONDITION" {
 			errCh <- ErrRaceCondition
 
 			return
 		}
+
 		errCh <- nil
 	}()
 
@@ -685,13 +735,18 @@ func NewTokenBucketMemcached(cli *memcache.Client, key string, ttl time.Duration
 
 // State gets the bucket's state from Memcached.
 func (t *TokenBucketMemcached) State(ctx context.Context) (TokenBucketState, error) {
-	var item *memcache.Item
-	var err error
-	var state TokenBucketState
+	var (
+		item  *memcache.Item
+		err   error
+		state TokenBucketState
+	)
+
 	done := make(chan struct{}, 1)
 	t.casId = 0
+
 	go func() {
 		defer close(done)
+
 		item, err = t.cli.Get(t.key)
 	}()
 
@@ -710,11 +765,14 @@ func (t *TokenBucketMemcached) State(ctx context.Context) (TokenBucketState, err
 
 		return state, errors.Wrap(err, "failed to get key from memcached")
 	}
+
 	b := bytes.NewBuffer(item.Value)
+
 	err = gob.NewDecoder(b).Decode(&state)
 	if err != nil {
 		return state, errors.Wrap(err, "failed to Decode")
 	}
+
 	t.casId = item.CasID
 
 	return state, nil
@@ -723,14 +781,19 @@ func (t *TokenBucketMemcached) State(ctx context.Context) (TokenBucketState, err
 // SetState updates the state in Memcached.
 func (t *TokenBucketMemcached) SetState(ctx context.Context, state TokenBucketState) error {
 	var err error
+
 	done := make(chan struct{}, 1)
+
 	var b bytes.Buffer
+
 	err = gob.NewEncoder(&b).Encode(state)
 	if err != nil {
 		return errors.Wrap(err, "failed to Encode")
 	}
+
 	go func() {
 		defer close(done)
+
 		item := &memcache.Item{
 			Key:   t.key,
 			Value: b.Bytes(),
@@ -743,6 +806,7 @@ func (t *TokenBucketMemcached) SetState(ctx context.Context, state TokenBucketSt
 			// Memcached supports expiration in seconds. It's more precise way.
 			item.Expiration = int32(math.Ceil(t.ttl.Seconds()))
 		}
+
 		if t.raceCheck && t.casId > 0 {
 			err = t.cli.CompareAndSwap(item)
 		} else {
@@ -827,9 +891,12 @@ func (t *TokenBucketDynamoDB) SetState(ctx context.Context, state TokenBucketSta
 	input := t.getPutItemInputFromState(state)
 
 	var err error
+
 	done := make(chan struct{})
+
 	go func() {
 		defer close(done)
+
 		_, err = dynamoDBputItem(ctx, t.client, input)
 	}()
 
@@ -868,10 +935,12 @@ func (t *TokenBucketDynamoDB) getPutItemInputFromState(state TokenBucketState) *
 	}
 
 	item[dynamoDBBucketLastKey] = &types.AttributeValueMemberN{Value: strconv.FormatInt(state.Last, 10)}
+
 	item[dynamoDBBucketVersionKey] = &types.AttributeValueMemberN{Value: strconv.FormatInt(t.latestVersion+1, 10)}
 	if t.ttl > 0 {
 		item[t.tableProps.TTLFieldName] = &types.AttributeValueMemberN{Value: strconv.FormatInt(time.Now().Add(t.ttl).Unix(), 10)}
 	}
+
 	item[dynamoDBBucketAvailableKey] = &types.AttributeValueMemberN{Value: strconv.FormatInt(state.Available, 10)}
 
 	input := &dynamodb.PutItemInput{
@@ -949,6 +1018,7 @@ func NewTokenBucketCosmosDB(client *azcosmos.ContainerClient, partitionKey strin
 
 func (t *TokenBucketCosmosDB) State(ctx context.Context) (TokenBucketState, error) {
 	var item CosmosDBTokenBucketItem
+
 	resp, err := t.client.ReadItem(ctx, azcosmos.NewPartitionKey().AppendString(t.partitionKey), t.id, &azcosmos.ItemOptions{})
 	if err != nil {
 		var respErr *azcore.ResponseError
@@ -973,6 +1043,7 @@ func (t *TokenBucketCosmosDB) State(ctx context.Context) (TokenBucketState, erro
 
 func (t *TokenBucketCosmosDB) SetState(ctx context.Context, state TokenBucketState) error {
 	var err error
+
 	done := make(chan struct{}, 1)
 
 	item := CosmosDBTokenBucketItem{
@@ -992,6 +1063,7 @@ func (t *TokenBucketCosmosDB) SetState(ctx context.Context, state TokenBucketSta
 
 	go func() {
 		defer close(done)
+
 		_, err = t.client.UpsertItem(ctx, azcosmos.NewPartitionKey().AppendString(t.partitionKey), value, &azcosmos.ItemOptions{})
 	}()
 

@@ -54,19 +54,23 @@ func (c *fakeClock) Sleep(d time.Duration) {
 	if d == 0 {
 		return
 	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	c.t = c.t.Add(d)
 }
 
 func (c *fakeClock) reset() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	c.t = c.initial
 }
 
 type LimitersTestSuite struct {
 	suite.Suite
+
 	etcdClient            *clientv3.Client
 	redisClient           *redis.Client
 	redisClusterClient    *redis.ClusterClient
@@ -83,6 +87,7 @@ type LimitersTestSuite struct {
 
 func (s *LimitersTestSuite) SetupSuite() {
 	var err error
+
 	s.etcdClient, err = clientv3.New(clientv3.Config{
 		Endpoints:   strings.Split(os.Getenv("ETCD_ENDPOINTS"), ","),
 		DialTimeout: time.Second,
@@ -126,14 +131,15 @@ func (s *LimitersTestSuite) SetupSuite() {
 
 	s.pgDb, err = sql.Open("postgres", os.Getenv("POSTGRES_URL"))
 	s.Require().NoError(err)
-	s.Require().NoError(s.pgDb.Ping())
+	s.Require().NoError(s.pgDb.PingContext(context.Background()))
 
 	// https://learn.microsoft.com/en-us/azure/cosmos-db/emulator#authentication
 	connString := fmt.Sprintf("AccountEndpoint=http://%s/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==;", os.Getenv("COSMOS_ADDR"))
 	s.cosmosClient, err = azcosmos.NewClientFromConnectionString(connString, &azcosmos.ClientOptions{})
 	s.Require().NoError(err)
 
-	if err = CreateCosmosDBContainer(context.Background(), s.cosmosClient); err != nil {
+	err = CreateCosmosDBContainer(context.Background(), s.cosmosClient)
+	if err != nil {
 		s.Require().ErrorContains(err, "Database 'limiters-db-test' already exists")
 	}
 
@@ -165,6 +171,7 @@ func (s *LimitersTestSuite) lockers(generateKeys bool) map[string]l.DistLocker {
 
 func hash(s string) int64 {
 	h := fnv.New32a()
+
 	_, err := h.Write([]byte(s))
 	if err != nil {
 		panic(err)
@@ -182,6 +189,7 @@ func (s *LimitersTestSuite) distLockers(generateKeys bool) map[string]l.DistLock
 	redisKey := randomKey
 	memcacheKey := randomKey
 	pgKey := randomKey
+
 	if !generateKeys {
 		consulKey = "dist_locker"
 		etcdKey = "dist_locker"
@@ -190,6 +198,7 @@ func (s *LimitersTestSuite) distLockers(generateKeys bool) map[string]l.DistLock
 		memcacheKey = "dist_locker"
 		pgKey = "dist_locker"
 	}
+
 	consulLock, err := s.consulClient.LockKey(consulKey)
 	s.Require().NoError(err)
 
@@ -208,25 +217,32 @@ func (s *LimitersTestSuite) TestLimitContextCancelled() {
 	clock := newFakeClock()
 	capacity := int64(2)
 	rate := time.Second
+
 	limiters := make(map[string]interface{})
 	for n, b := range s.tokenBuckets(capacity, rate, time.Second, clock) {
 		limiters[n] = b
 	}
+
 	for n, b := range s.leakyBuckets(capacity, rate, time.Second, clock) {
 		limiters[n] = b
 	}
+
 	for n, w := range s.fixedWindows(capacity, rate, clock) {
 		limiters[n] = w
 	}
+
 	for n, w := range s.slidingWindows(capacity, rate, clock, 1e-9) {
 		limiters[n] = w
 	}
+
 	for n, b := range s.concurrentBuffers(capacity, rate, clock) {
 		limiters[n] = b
 	}
+
 	type rateLimiter interface {
 		Limit(context.Context) (time.Duration, error)
 	}
+
 	type concurrentLimiter interface {
 		Limit(context.Context, string) error
 	}
@@ -234,11 +250,13 @@ func (s *LimitersTestSuite) TestLimitContextCancelled() {
 	for name, limiter := range limiters {
 		s.Run(name, func() {
 			done1 := make(chan struct{})
+
 			go func(limiter interface{}) {
 				defer close(done1)
 				// The context is expired shortly after it is created.
 				ctx, cancel := context.WithCancel(context.Background())
 				cancel()
+
 				switch lim := limiter.(type) {
 				case rateLimiter:
 					_, err := lim.Limit(ctx)
@@ -248,11 +266,16 @@ func (s *LimitersTestSuite) TestLimitContextCancelled() {
 					s.Error(lim.Limit(ctx, "key"), "%T", limiter)
 				}
 			}(limiter)
+
 			done2 := make(chan struct{})
+
 			go func(limiter interface{}) {
 				defer close(done2)
+
 				<-done1
+
 				ctx := context.Background()
+
 				switch lim := limiter.(type) {
 				case rateLimiter:
 					_, err := lim.Limit(ctx)

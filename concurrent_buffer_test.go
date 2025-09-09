@@ -13,6 +13,7 @@ import (
 
 func (s *LimitersTestSuite) concurrentBuffers(capacity int64, ttl time.Duration, clock l.Clock) map[string]*l.ConcurrentBuffer {
 	buffers := make(map[string]*l.ConcurrentBuffer)
+
 	for lockerName, locker := range s.lockers(true) {
 		for bName, b := range s.concurrentBufferBackends(ttl, clock) {
 			buffers[lockerName+":"+bName] = l.NewConcurrentBuffer(locker, b, capacity, s.logger)
@@ -34,19 +35,23 @@ func (s *LimitersTestSuite) concurrentBufferBackends(ttl time.Duration, clock l.
 func (s *LimitersTestSuite) TestConcurrentBufferNoOverflow() {
 	clock := newFakeClock()
 	capacity := int64(10)
+
 	ttl := time.Second
 	for name, buffer := range s.concurrentBuffers(capacity, ttl, clock) {
 		s.Run(name, func() {
 			wg := sync.WaitGroup{}
 			for i := int64(0); i < capacity; i++ {
 				wg.Add(1)
+
 				go func(i int64, buffer *l.ConcurrentBuffer) {
 					defer wg.Done()
+
 					key := fmt.Sprintf("key%d", i)
 					s.NoError(buffer.Limit(context.TODO(), key))
 					s.NoError(buffer.Done(context.TODO(), key))
 				}(i, buffer)
 			}
+
 			wg.Wait()
 			s.NoError(buffer.Limit(context.TODO(), "last"))
 			s.NoError(buffer.Done(context.TODO(), "last"))
@@ -57,23 +62,32 @@ func (s *LimitersTestSuite) TestConcurrentBufferNoOverflow() {
 func (s *LimitersTestSuite) TestConcurrentBufferOverflow() {
 	clock := newFakeClock()
 	capacity := int64(3)
+
 	ttl := time.Second
 	for name, buffer := range s.concurrentBuffers(capacity, ttl, clock) {
 		s.Run(name, func() {
 			mu := sync.Mutex{}
+
 			var errors []error
+
 			wg := sync.WaitGroup{}
 			for i := int64(0); i <= capacity; i++ {
 				wg.Add(1)
+
 				go func(i int64, buffer *l.ConcurrentBuffer) {
 					defer wg.Done()
-					if err := buffer.Limit(context.TODO(), fmt.Sprintf("key%d", i)); err != nil {
+
+					err := buffer.Limit(context.TODO(), fmt.Sprintf("key%d", i))
+					if err != nil {
 						mu.Lock()
+
 						errors = append(errors, err)
+
 						mu.Unlock()
 					}
 				}(i, buffer)
 			}
+
 			wg.Wait()
 			s.Equal([]error{l.ErrLimitExhausted}, errors)
 		})
@@ -83,6 +97,7 @@ func (s *LimitersTestSuite) TestConcurrentBufferOverflow() {
 func (s *LimitersTestSuite) TestConcurrentBufferExpiredKeys() {
 	clock := newFakeClock()
 	capacity := int64(2)
+
 	ttl := time.Second
 	for name, buffer := range s.concurrentBuffers(capacity, ttl, clock) {
 		s.Run(name, func() {
@@ -100,6 +115,7 @@ func (s *LimitersTestSuite) TestConcurrentBufferExpiredKeys() {
 func (s *LimitersTestSuite) TestConcurrentBufferDuplicateKeys() {
 	clock := newFakeClock()
 	capacity := int64(2)
+
 	ttl := time.Second
 	for name, buffer := range s.concurrentBuffers(capacity, ttl, clock) {
 		s.Run(name, func() {
@@ -115,9 +131,11 @@ func BenchmarkConcurrentBuffers(b *testing.B) {
 	s := new(LimitersTestSuite)
 	s.SetT(&testing.T{})
 	s.SetupSuite()
+
 	capacity := int64(1)
 	ttl := time.Second
 	clock := newFakeClock()
+
 	buffers := s.concurrentBuffers(capacity, ttl, clock)
 	for name, buffer := range buffers {
 		b.Run(name, func(b *testing.B) {
@@ -126,5 +144,6 @@ func BenchmarkConcurrentBuffers(b *testing.B) {
 			}
 		})
 	}
+
 	s.TearDownSuite()
 }

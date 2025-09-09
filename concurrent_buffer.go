@@ -39,11 +39,15 @@ func NewConcurrentBuffer(locker DistLocker, concurrentStateBackend ConcurrentBuf
 func (c *ConcurrentBuffer) Limit(ctx context.Context, key string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if err := c.locker.Lock(ctx); err != nil {
+
+	err := c.locker.Lock(ctx)
+	if err != nil {
 		return err
 	}
+
 	defer func() {
-		if err := c.locker.Unlock(ctx); err != nil {
+		err := c.locker.Unlock(ctx)
+		if err != nil {
 			c.logger.Log(err)
 		}
 	}()
@@ -52,9 +56,11 @@ func (c *ConcurrentBuffer) Limit(ctx context.Context, key string) error {
 	if err != nil {
 		return err
 	}
+
 	if counter > c.capacity {
 		// Rollback the Add() operation.
-		if err = c.backend.Remove(ctx, key); err != nil {
+		err = c.backend.Remove(ctx, key)
+		if err != nil {
 			c.logger.Log(err)
 		}
 
@@ -89,6 +95,7 @@ func NewConcurrentBufferInMemory(registry *Registry, ttl time.Duration, clock Cl
 func (c *ConcurrentBufferInMemory) Add(ctx context.Context, key string) (int64, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	now := c.clock.Now()
 	c.registry.DeleteExpired(now)
 	c.registry.GetOrCreate(key, func() interface{} {
@@ -102,6 +109,7 @@ func (c *ConcurrentBufferInMemory) Add(ctx context.Context, key string) (int64, 
 func (c *ConcurrentBufferInMemory) Remove(_ context.Context, key string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	c.registry.Delete(key)
 
 	return nil
@@ -125,11 +133,16 @@ func NewConcurrentBufferRedis(cli redis.UniversalClient, key string, ttl time.Du
 // Add adds the request with the given key to the sorted set in Redis and returns the total number of requests in it.
 // It also removes the keys with expired TTL.
 func (c *ConcurrentBufferRedis) Add(ctx context.Context, key string) (int64, error) {
-	var countCmd *redis.IntCmd
-	var err error
+	var (
+		countCmd *redis.IntCmd
+		err      error
+	)
+
 	done := make(chan struct{})
+
 	go func() {
 		defer close(done)
+
 		_, err = c.cli.Pipelined(ctx, func(pipeliner redis.Pipeliner) error {
 			// Remove expired items.
 			now := c.clock.Now()
@@ -186,14 +199,20 @@ type SortedSetNode struct {
 // It also removes the keys with expired TTL.
 func (c *ConcurrentBufferMemcached) Add(ctx context.Context, element string) (int64, error) {
 	var err error
+
 	done := make(chan struct{})
 	now := c.clock.Now()
-	var newNodes []SortedSetNode
-	var casId uint64 = 0
+
+	var (
+		newNodes []SortedSetNode
+		casId    uint64 = 0
+	)
 
 	go func() {
 		defer close(done)
+
 		var item *memcache.Item
+
 		item, err = c.cli.Get(c.key)
 		if err != nil {
 			if !errors.Is(err, memcache.ErrCacheMiss) {
@@ -202,7 +221,9 @@ func (c *ConcurrentBufferMemcached) Add(ctx context.Context, element string) (in
 		} else {
 			casId = item.CasID
 			b := bytes.NewBuffer(item.Value)
+
 			var oldNodes []SortedSetNode
+
 			_ = gob.NewDecoder(b).Decode(&oldNodes)
 			for _, node := range oldNodes {
 				if node.CreatedAt > now.UnixNano() && node.Value != element {
@@ -210,9 +231,13 @@ func (c *ConcurrentBufferMemcached) Add(ctx context.Context, element string) (in
 				}
 			}
 		}
+
 		newNodes = append(newNodes, SortedSetNode{CreatedAt: now.Add(c.ttl).UnixNano(), Value: element})
+
 		var b bytes.Buffer
+
 		_ = gob.NewEncoder(&b).Encode(newNodes)
+
 		item = &memcache.Item{
 			Key:   c.key,
 			Value: b.Bytes(),
@@ -245,9 +270,14 @@ func (c *ConcurrentBufferMemcached) Add(ctx context.Context, element string) (in
 // Remove removes the request identified by the key from the slice in Memcached.
 func (c *ConcurrentBufferMemcached) Remove(ctx context.Context, key string) error {
 	var err error
+
 	now := c.clock.Now()
-	var newNodes []SortedSetNode
-	var casID uint64
+
+	var (
+		newNodes []SortedSetNode
+		casID    uint64
+	)
+
 	item, err := c.cli.Get(c.key)
 	if err != nil {
 		if errors.Is(err, memcache.ErrCacheMiss) {
@@ -256,8 +286,11 @@ func (c *ConcurrentBufferMemcached) Remove(ctx context.Context, key string) erro
 
 		return errors.Wrap(err, "failed to Get")
 	}
+
 	casID = item.CasID
+
 	var oldNodes []SortedSetNode
+
 	_ = gob.NewDecoder(bytes.NewBuffer(item.Value)).Decode(&oldNodes)
 	for _, node := range oldNodes {
 		if node.CreatedAt > now.UnixNano() && node.Value != key {
@@ -266,12 +299,14 @@ func (c *ConcurrentBufferMemcached) Remove(ctx context.Context, key string) erro
 	}
 
 	var b bytes.Buffer
+
 	_ = gob.NewEncoder(&b).Encode(newNodes)
 	item = &memcache.Item{
 		Key:   c.key,
 		Value: b.Bytes(),
 		CasID: casID,
 	}
+
 	err = c.cli.CompareAndSwap(item)
 	if err != nil && (errors.Is(err, memcache.ErrCASConflict) || errors.Is(err, memcache.ErrNotStored) || errors.Is(err, memcache.ErrCacheMiss)) {
 		return c.Remove(ctx, key)

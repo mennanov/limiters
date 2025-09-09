@@ -74,6 +74,7 @@ var tokenBucketUniformTestCases = []struct {
 // tokenBuckets returns all the possible TokenBucket combinations.
 func (s *LimitersTestSuite) tokenBuckets(capacity int64, refillRate, ttl time.Duration, clock l.Clock) map[string]*l.TokenBucket {
 	buckets := make(map[string]*l.TokenBucket)
+
 	for lockerName, locker := range s.lockers(true) {
 		for backendName, backend := range s.tokenBucketBackends(ttl) {
 			buckets[lockerName+":"+backendName] = l.NewTokenBucket(capacity, refillRate, locker, backend, clock, s.logger)
@@ -109,23 +110,32 @@ func (s *LimitersTestSuite) TestTokenBucketRealClock() {
 				wg := sync.WaitGroup{}
 				// mu guards the miss variable below.
 				var mu sync.Mutex
+
 				miss := 0
+
 				for i := int64(0); i < testCase.requestCount; i++ {
 					// No pause for the first request.
 					if i > 0 {
 						clock.Sleep(testCase.requestRate)
 					}
+
 					wg.Add(1)
+
 					go func(bucket *l.TokenBucket) {
 						defer wg.Done()
-						if _, err := bucket.Limit(context.TODO()); err != nil {
+
+						_, err := bucket.Limit(context.TODO())
+						if err != nil {
 							s.Equal(l.ErrLimitExhausted, err, "%T %v", bucket, bucket)
 							mu.Lock()
+
 							miss++
+
 							mu.Unlock()
 						}
 					}(bucket)
 				}
+
 				wg.Wait()
 				s.InDelta(testCase.missExpected, miss, testCase.delta, testCase)
 			})
@@ -139,17 +149,23 @@ func (s *LimitersTestSuite) TestTokenBucketFakeClock() {
 		for name, bucket := range s.tokenBuckets(testCase.capacity, testCase.refillRate, 0, clock) {
 			s.Run(name, func() {
 				clock.reset()
+
 				miss := 0
+
 				for i := int64(0); i < testCase.requestCount; i++ {
 					// No pause for the first request.
 					if i > 0 {
 						clock.Sleep(testCase.requestRate)
 					}
-					if _, err := bucket.Limit(context.TODO()); err != nil {
+
+					_, err := bucket.Limit(context.TODO())
+					if err != nil {
 						s.Equal(l.ErrLimitExhausted, err)
+
 						miss++
 					}
 				}
+
 				s.InDelta(testCase.missExpected, miss, testCase.delta, testCase)
 			})
 		}
@@ -158,10 +174,12 @@ func (s *LimitersTestSuite) TestTokenBucketFakeClock() {
 
 func (s *LimitersTestSuite) TestTokenBucketOverflow() {
 	clock := newFakeClock()
+
 	rate := 100 * time.Millisecond
 	for name, bucket := range s.tokenBuckets(2, rate, 0, clock) {
 		s.Run(name, func() {
 			clock.reset()
+
 			wait, err := bucket.Limit(context.TODO())
 			s.Require().NoError(err)
 			s.Equal(time.Duration(0), wait)
@@ -183,6 +201,7 @@ func (s *LimitersTestSuite) TestTokenBucketOverflow() {
 
 func (s *LimitersTestSuite) TestTokenTakeMaxOverflow() {
 	clock := newFakeClock()
+
 	rate := 100 * time.Millisecond
 	for name, bucket := range s.tokenBuckets(3, rate, 0, clock) {
 		s.Run(name, func() {
@@ -210,10 +229,12 @@ func (s *LimitersTestSuite) TestTokenTakeMaxOverflow() {
 
 func (s *LimitersTestSuite) TestTokenBucketReset() {
 	clock := newFakeClock()
+
 	rate := 100 * time.Millisecond
 	for name, bucket := range s.tokenBuckets(2, rate, 0, clock) {
 		s.Run(name, func() {
 			clock.reset()
+
 			wait, err := bucket.Limit(context.TODO())
 			s.Require().NoError(err)
 			s.Equal(time.Duration(0), wait)
@@ -224,6 +245,7 @@ func (s *LimitersTestSuite) TestTokenBucketReset() {
 			wait, err = bucket.Limit(context.TODO())
 			s.Require().Equal(l.ErrLimitExhausted, err)
 			s.Equal(rate, wait)
+
 			err = bucket.Reset(context.TODO())
 			s.Require().NoError(err)
 			// Retry the last call.
@@ -267,10 +289,13 @@ func (s *LimitersTestSuite) TestTokenBucketRefill() {
 // setTokenBucketStateInOldFormat is a test utility method for writing state in the old format to Redis.
 func setTokenBucketStateInOldFormat(ctx context.Context, cli *redis.Client, prefix string, state l.TokenBucketState, ttl time.Duration) error {
 	_, err := cli.TxPipelined(ctx, func(pipeliner redis.Pipeliner) error {
-		if err := pipeliner.Set(ctx, fmt.Sprintf("{%s}last", prefix), state.Last, ttl).Err(); err != nil {
+		err := pipeliner.Set(ctx, fmt.Sprintf("{%s}last", prefix), state.Last, ttl).Err()
+		if err != nil {
 			return err
 		}
-		if err := pipeliner.Set(ctx, fmt.Sprintf("{%s}available", prefix), state.Available, ttl).Err(); err != nil {
+
+		err = pipeliner.Set(ctx, fmt.Sprintf("{%s}available", prefix), state.Available, ttl).Err()
+		if err != nil {
 			return err
 		}
 
@@ -361,9 +386,11 @@ func BenchmarkTokenBuckets(b *testing.B) {
 	s := new(LimitersTestSuite)
 	s.SetT(&testing.T{})
 	s.SetupSuite()
+
 	capacity := int64(1)
 	rate := 100 * time.Millisecond
 	clock := newFakeClock()
+
 	buckets := s.tokenBuckets(capacity, rate, 0, clock)
 	for name, bucket := range buckets {
 		b.Run(name, func(b *testing.B) {
@@ -373,5 +400,6 @@ func BenchmarkTokenBuckets(b *testing.B) {
 			}
 		})
 	}
+
 	s.TearDownSuite()
 }

@@ -24,7 +24,9 @@ import (
 
 func Example_simpleGRPCLimiter() {
 	// Set up a gRPC server.
-	lis, err := net.Listen("tcp", examples.Port)
+	lc := net.ListenConfig{}
+
+	lis, err := lc.Listen(context.Background(), "tcp", examples.Port)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
@@ -73,12 +75,15 @@ func Example_simpleGRPCLimiter() {
 		}))
 
 	pb.RegisterGreeterServer(s, &examples.Server{})
+
 	go func() {
 		// Start serving.
-		if err = s.Serve(lis); err != nil {
+		err = s.Serve(lis)
+		if err != nil {
 			log.Fatalf("failed to serve: %v", err)
 		}
 	}()
+
 	defer s.GracefulStop()
 
 	// Set up a client connection to the server.
@@ -87,25 +92,32 @@ func Example_simpleGRPCLimiter() {
 		log.Fatalf("did not connect: %v", err)
 	}
 	defer conn.Close()
+
 	c := pb.NewGreeterClient(conn)
 
 	// Contact the server and print out its response.
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
+
 	r, err := c.SayHello(ctx, &pb.HelloRequest{Name: "Alice"})
 	if err != nil {
 		log.Fatalf("could not greet: %v", err)
 	}
+
 	fmt.Println(r.GetMessage())
+
 	r, err = c.SayHello(ctx, &pb.HelloRequest{Name: "Bob"})
 	if err != nil {
 		log.Fatalf("could not greet: %v", err)
 	}
+
 	fmt.Println(r.GetMessage())
+
 	_, err = c.SayHello(ctx, &pb.HelloRequest{Name: "Peter"})
 	if err == nil {
 		log.Fatal("error expected, but got nil")
 	}
+
 	fmt.Println(err)
 	// Output: Hello Alice
 	// Hello Bob
