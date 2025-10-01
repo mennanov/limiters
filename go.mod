@@ -1,6 +1,6 @@
 module github.com/mennanov/limiters
 
-go 1.23.8
+go 1.24
 
 replace github.com/armon/go-metrics => github.com/hashicorp/go-metrics v0.4.1
 
@@ -15,7 +15,7 @@ require (
 	github.com/redis/go-redis/v9 v9.13.0
 	github.com/samuel/go-zookeeper v0.0.0-20201211165307-7117e9ea2414
 	github.com/stretchr/testify v1.10.0
-	go.etcd.io/etcd/api/v3 v3.6.4
+	go.etcd.io/etcd/api/v3 v3.6.5
 	go.etcd.io/etcd/client/v3 v3.6.4
 	google.golang.org/grpc v1.75.0
 	google.golang.org/protobuf v1.36.6
