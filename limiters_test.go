@@ -93,15 +93,27 @@ func (s *LimitersTestSuite) SetupSuite() {
 		DialTimeout: time.Second,
 	})
 	s.Require().NoError(err)
+	_, err = s.etcdClient.Status(context.Background(), s.etcdClient.Endpoints()[0])
+	s.Require().NoError(err)
+
 	s.redisClient = redis.NewClient(&redis.Options{
 		Addr: os.Getenv("REDIS_ADDR"),
 	})
+	s.Require().NoError(s.redisClient.Ping(context.Background()).Err())
+
 	s.redisClusterClient = redis.NewClusterClient(&redis.ClusterOptions{
 		Addrs: strings.Split(os.Getenv("REDIS_NODES"), ","),
 	})
+	s.Require().NoError(s.redisClusterClient.Ping(context.Background()).Err())
+
 	s.consulClient, err = api.NewClient(&api.Config{Address: os.Getenv("CONSUL_ADDR")})
 	s.Require().NoError(err)
+	_, err = s.consulClient.Status().Leader()
+	s.Require().NoError(err)
+
 	s.zkConn, _, err = zk.Connect(strings.Split(os.Getenv("ZOOKEEPER_ENDPOINTS"), ","), time.Second)
+	s.Require().NoError(err)
+	_, _, err = s.zkConn.Get("/")
 	s.Require().NoError(err)
 	s.logger = l.NewStdLogger()
 
