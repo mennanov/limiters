@@ -1,17 +1,14 @@
-version: "3"
-
 services:
   etcd:
-    image: bitnami/etcd
+    image: gcr.io/etcd-development/etcd:v3.6.5
     environment:
-      ALLOW_NONE_AUTHENTICATION: "yes"
+      ETCD_LISTEN_CLIENT_URLS: "http://0.0.0.0:2379"
+      ETCD_ADVERTISE_CLIENT_URLS: "http://0.0.0.0:2379"
     ports:
       - "2379:2379"
 
   redis:
-    image: bitnami/redis
-    environment:
-      ALLOW_EMPTY_PASSWORD: "yes"
+    image: redis:8.2
     ports:
       - "6379:6379"
 
@@ -24,19 +21,17 @@ services:
       - "11000-11005:11000-11005"
 
   memcached:
-    image: bitnami/memcached
+    image: memcached:1.6
     ports:
       - "11211:11211"
 
   consul:
-    image: bitnami/consul
+    image: hashicorp/consul:1.21
     ports:
       - "8500:8500"
 
   zookeeper:
-    image: bitnami/zookeeper
-    environment:
-      ALLOW_ANONYMOUS_LOGIN: "yes"
+    image: zookeeper:3.9
     ports:
       - "2181:2181"
 
@@ -47,9 +42,9 @@ services:
       - "8000:8000"
 
   postgresql:
-    image: bitnami/postgresql
+    image: postgres:18
     environment:
-      ALLOW_EMPTY_PASSWORD: yes
+      POSTGRES_PASSWORD: postgres
     ports:
       - "5432:5432"
 
