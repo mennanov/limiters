@@ -1,4 +1,3 @@
-// Package examples implements a gRPC server for Greeter service using rate limiters.
 package examples_test
 
 import (
