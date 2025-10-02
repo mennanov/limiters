@@ -10,7 +10,7 @@ const (
 	Port = ":50051"
 )
 
-// server is used to implement helloworld.GreeterServer.
+// Server is used to implement helloworld.GreeterServer.
 type Server struct {
 	pb.UnimplementedGreeterServer
 }
