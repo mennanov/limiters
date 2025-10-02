@@ -1,14 +1,9 @@
-version: "3"
-
 services:
   etcd:
     image: gcr.io/etcd-development/etcd:v3.6.5
-    command:
-      - /usr/local/bin/etcd
-      - --listen-client-urls
-      - http://0.0.0.0:2379
-      - --advertise-client-urls
-      - http://0.0.0.0:2379
+    environment:
+      ETCD_LISTEN_CLIENT_URLS: "http://0.0.0.0:2379"
+      ETCD_ADVERTISE_CLIENT_URLS: "http://0.0.0.0:2379"
     ports:
       - "2379:2379"
 
