@@ -17,6 +17,7 @@ jobs:
         go-version: [ '1.23', '1.24', '1.25' ]
 
     services:
+      # <block name="testing-services" affects="docker-compose.yml:testing-services">
       etcd:
         image: gcr.io/etcd-development/etcd:v3.6.5
         env:
@@ -60,6 +61,7 @@ jobs:
           COSMOS_HTTP_CONNECTION_WITHOUT_TLS_ALLOWED: "true"
         ports:
           - "8081:8081"
+      # </block>
 
     steps:
       - uses: actions/checkout@v4

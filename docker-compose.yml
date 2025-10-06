@@ -1,4 +1,5 @@
 services:
+  # <block name="testing-services" affects=".github/workflows/tests.yml:testing-services">
   etcd:
     image: gcr.io/etcd-development/etcd:v3.6.5
     environment:
@@ -56,3 +57,4 @@ services:
       COSMOS_HTTP_CONNECTION_WITHOUT_TLS_ALLOWED: "true"
     ports:
       - "8081:8081"
+  # </block>

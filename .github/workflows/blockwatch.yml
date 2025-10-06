@@ -1,0 +1,19 @@
+name: Blockwatch linter
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  staticcheck:
+    name: Blockwatch
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+            fetch-depth: 2 # Required to diff against the base branch
+      - uses: mennanov/blockwatch-action@v1
