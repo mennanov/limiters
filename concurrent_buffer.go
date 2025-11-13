@@ -117,17 +117,25 @@ func (c *ConcurrentBufferInMemory) Remove(_ context.Context, key string) error {
 
 // ConcurrentBufferRedis implements ConcurrentBufferBackend in Redis.
 type ConcurrentBufferRedis struct {
-	clock Clock
-	cli   redis.UniversalClient
-	key   string
-	ttl   time.Duration
+	clock     Clock
+	cli       redis.UniversalClient
+	key       string
+	ttl       time.Duration
+	expireSet bool
 }
 
 // NewConcurrentBufferRedis creates a new instance of ConcurrentBufferRedis.
 // When the TTL of a key exceeds the key is removed from the buffer. This is needed in case if the process that added
 // that key to the buffer did not call Done() for some reason.
 func NewConcurrentBufferRedis(cli redis.UniversalClient, key string, ttl time.Duration, clock Clock) *ConcurrentBufferRedis {
-	return &ConcurrentBufferRedis{clock: clock, cli: cli, key: key, ttl: ttl}
+	return &ConcurrentBufferRedis{clock: clock, cli: cli, key: key, ttl: ttl, expireSet: false}
+}
+
+// NewConcurrentBufferRedisWithExpire creates a new instance of ConcurrentBufferRedis.
+// Functions the same as the normal redis buffer,
+// but when the last key is removed from the set, the set will also be removed from redis.
+func NewConcurrentBufferRedisWithExpire(cli redis.UniversalClient, key string, ttl time.Duration, clock Clock) *ConcurrentBufferRedis {
+	return &ConcurrentBufferRedis{clock: clock, cli: cli, key: key, ttl: ttl, expireSet: true}
 }
 
 // Add adds the request with the given key to the sorted set in Redis and returns the total number of requests in it.
@@ -151,6 +159,9 @@ func (c *ConcurrentBufferRedis) Add(ctx context.Context, key string) (int64, err
 				Score:  float64(now.UnixNano()),
 				Member: key,
 			})
+			if c.expireSet {
+				pipeliner.Expire(ctx, c.key, c.ttl)
+			}
 			countCmd = pipeliner.ZCard(ctx, c.key)
 
 			return nil
