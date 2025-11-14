@@ -25,11 +25,10 @@ func (s *LimitersTestSuite) concurrentBuffers(capacity int64, ttl time.Duration,
 
 func (s *LimitersTestSuite) concurrentBufferBackends(ttl time.Duration, clock l.Clock) map[string]l.ConcurrentBufferBackend {
 	return map[string]l.ConcurrentBufferBackend{
-		"ConcurrentBufferInMemory":        l.NewConcurrentBufferInMemory(l.NewRegistry(), ttl, clock),
-		"ConcurrentBufferRedis":           l.NewConcurrentBufferRedis(s.redisClient, uuid.New().String(), ttl, clock),
-		"ConcurrentBufferRedisWithExpire": l.NewConcurrentBufferRedisWithExpire(s.redisClient, uuid.New().String(), ttl, clock),
-		"ConcurrentBufferRedisCluster":    l.NewConcurrentBufferRedis(s.redisClusterClient, uuid.New().String(), ttl, clock),
-		"ConcurrentBufferMemcached":       l.NewConcurrentBufferMemcached(s.memcacheClient, uuid.New().String(), ttl, clock),
+		"ConcurrentBufferInMemory":     l.NewConcurrentBufferInMemory(l.NewRegistry(), ttl, clock),
+		"ConcurrentBufferRedis":        l.NewConcurrentBufferRedis(s.redisClient, uuid.New().String(), ttl, clock),
+		"ConcurrentBufferRedisCluster": l.NewConcurrentBufferRedis(s.redisClusterClient, uuid.New().String(), ttl, clock),
+		"ConcurrentBufferMemcached":    l.NewConcurrentBufferMemcached(s.memcacheClient, uuid.New().String(), ttl, clock),
 	}
 }
 
