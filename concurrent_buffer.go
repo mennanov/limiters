@@ -151,6 +151,7 @@ func (c *ConcurrentBufferRedis) Add(ctx context.Context, key string) (int64, err
 				Score:  float64(now.UnixNano()),
 				Member: key,
 			})
+			pipeliner.Expire(ctx, c.key, c.ttl)
 			countCmd = pipeliner.ZCard(ctx, c.key)
 
 			return nil
