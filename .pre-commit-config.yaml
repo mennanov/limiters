@@ -3,7 +3,7 @@ repos:
     hooks:
       - id: blockwatch
         name: blockwatch
-        entry: bash -c 'git diff --patch --unified=0 | blockwatch'
+        entry: bash -c 'git diff --patch --cached --unified=0 | blockwatch'
         language: system
         stages: [ pre-commit ]
         pass_filenames: false

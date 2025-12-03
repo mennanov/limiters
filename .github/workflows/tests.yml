@@ -14,7 +14,9 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
+        # <block name="go-version" affects="go.mod:go-version">
         go-version: [ '1.23', '1.24', '1.25' ]
+        # </block>
 
     services:
       # <block name="testing-services" affects="docker-compose.yml:testing-services">
@@ -74,6 +76,7 @@ jobs:
         with:
           port: 8000
       - name: Run tests
+        # <block name="test-env-vars" affects="Makefile:test-env-vars">
         env:
           ETCD_ENDPOINTS: 'localhost:2379'
           REDIS_ADDR: 'localhost:6379'
@@ -84,6 +87,7 @@ jobs:
           MEMCACHED_ADDR: '127.0.0.1:11211'
           POSTGRES_URL: postgres://postgres:postgres@localhost:5432/?sslmode=disable
           COSMOS_ADDR: '127.0.0.1:8081'
+        # </block>
         run: |
           if [ "${{ matrix.go-version }}" = "1.25" ]; then
             go test -race -coverprofile=coverage.txt -covermode=atomic ./...

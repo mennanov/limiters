@@ -23,4 +23,6 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v8
         with:
+          # <block name="golangci-lint-version" affects="Makefile:golangci-lint-version">
           version: "v2.5.0"
+          # </block>

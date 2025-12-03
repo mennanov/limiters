@@ -1,6 +1,8 @@
 module github.com/mennanov/limiters
 
+// <block name="go-version" affects=".github/workflows/tests.yml:go-version">
 go 1.25.3
+// </block>
 
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.19.1
