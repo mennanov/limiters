@@ -349,7 +349,7 @@ func (f *FixedWindowCosmosDB) Increment(ctx context.Context, window time.Time, t
 	}
 
 	var respErr *azcore.ResponseError
-	if !errors.As(err, &respErr) || respErr.StatusCode != http.StatusNotFound {
+	if !errors.As(err, &respErr) || (respErr.StatusCode != http.StatusNotFound && respErr.StatusCode != http.StatusBadRequest) {
 		return 0, errors.Wrap(err, `patch of cosmos value failed`)
 	}
 
@@ -358,11 +358,15 @@ func (f *FixedWindowCosmosDB) Increment(ctx context.Context, window time.Time, t
 		return 0, errors.Wrap(err, "marshal of cosmos value failed")
 	}
 
+	// Try to CreateItem. If it fails with Conflict, it means the item exists (and Patch failed with 400), so we fallback to RMW.
 	_, err = f.client.CreateItem(ctx, azcosmos.NewPartitionKey().AppendString(f.partitionKey), newValue, &azcosmos.ItemOptions{
 		SessionToken: patchResp.SessionToken,
-		IfMatchEtag:  &patchResp.ETag,
 	})
 	if err != nil {
+		if errors.As(err, &respErr) && respErr.StatusCode == http.StatusConflict {
+			// Fallback to Read-Modify-Write
+			return incrementCosmosItemRMW(ctx, f.client, f.partitionKey, id, ttl)
+		}
 		return 0, errors.Wrap(err, "upsert of cosmos value failed")
 	}
 
