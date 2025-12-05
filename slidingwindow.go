@@ -471,8 +471,10 @@ func (s *SlidingWindowCosmosDB) Increment(ctx context.Context, prev, curr time.T
 			if errors.As(err, &respErr) && respErr.StatusCode == http.StatusConflict {
 				// Fallback to Read-Modify-Write
 				currentCount, currentErr = incrementCosmosItemRMW(ctx, s.client, s.partitionKey, id, ttl)
+
 				return
 			}
+
 			currentErr = errors.Wrap(err, "upsert of cosmos value current failed")
 
 			return

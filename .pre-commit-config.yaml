@@ -7,3 +7,9 @@ repos:
         language: system
         stages: [ pre-commit ]
         pass_filenames: false
+      - id: golangci-lint
+        name: golangci-lint
+        entry: golangci-lint run
+        language: system
+        types: [go]
+        pass_filenames: false

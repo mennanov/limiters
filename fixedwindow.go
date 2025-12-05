@@ -367,6 +367,7 @@ func (f *FixedWindowCosmosDB) Increment(ctx context.Context, window time.Time, t
 			// Fallback to Read-Modify-Write
 			return incrementCosmosItemRMW(ctx, f.client, f.partitionKey, id, ttl)
 		}
+
 		return 0, errors.Wrap(err, "upsert of cosmos value failed")
 	}
 
