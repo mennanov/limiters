@@ -13,6 +13,9 @@ var (
 
 	// ErrRaceCondition is returned when there is a race condition while saving a state of a rate limiter.
 	ErrRaceCondition = errors.New("race condition detected")
+
+	// ErrMaxInt64Exceeded is returned when the counter exceeds the maximum integer value.
+	ErrMaxInt64Exceeded = errors.New("counter exceeds max int64")
 )
 
 // Logger wraps the Log method for logging.
