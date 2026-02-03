@@ -245,6 +245,14 @@ func (s *SlidingWindowMemcached) Increment(ctx context.Context, prev, curr time.
 			return 0, 0, err
 		}
 
+		if prevCount > math.MaxInt64 {
+			return 0, 0, fmt.Errorf("prevCount %d exceeds max int64: %w", prevCount, ErrMaxInt64Exceeded)
+		}
+
+		if currCount > math.MaxInt64 {
+			return 0, 0, fmt.Errorf("currCount %d exceeds max int64: %w", currCount, ErrMaxInt64Exceeded)
+		}
+
 		return int64(prevCount), int64(currCount), nil
 	case <-ctx.Done():
 		return 0, 0, ctx.Err()
