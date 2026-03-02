@@ -58,7 +58,7 @@ func (s *LimitersTestSuite) TestLeakyBucketRealClock() {
 
 				var totalWait time.Duration
 
-				for i := int64(0); i < capacity; i++ {
+				for i := range capacity {
 					// No pause for the first request.
 					if i > 0 {
 						clock.Sleep(requestRate)
@@ -110,7 +110,7 @@ func (s *LimitersTestSuite) TestLeakyBucketFakeClock() {
 				clock.reset()
 				start := clock.Now()
 
-				for i := int64(0); i < capacity; i++ {
+				for i := range capacity {
 					// No pause for the first request.
 					if i > 0 {
 						clock.Sleep(requestRate)
@@ -121,10 +121,7 @@ func (s *LimitersTestSuite) TestLeakyBucketFakeClock() {
 					clock.Sleep(wait)
 				}
 
-				interval := rate
-				if requestRate > rate {
-					interval = requestRate
-				}
+				interval := max(rate, requestRate)
 
 				s.Equal(interval*time.Duration(capacity-1), clock.Now().Sub(start), "request rate: %d, bucket: %v", requestRate, bucket)
 			})

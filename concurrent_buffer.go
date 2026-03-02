@@ -98,7 +98,7 @@ func (c *ConcurrentBufferInMemory) Add(ctx context.Context, key string) (int64, 
 
 	now := c.clock.Now()
 	c.registry.DeleteExpired(now)
-	c.registry.GetOrCreate(key, func() interface{} {
+	c.registry.GetOrCreate(key, func() any {
 		return struct{}{}
 	}, c.ttl, now)
 

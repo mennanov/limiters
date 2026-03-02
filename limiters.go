@@ -21,7 +21,7 @@ var (
 // Logger wraps the Log method for logging.
 type Logger interface {
 	// Log logs the given arguments.
-	Log(v ...interface{})
+	Log(v ...any)
 }
 
 // StdLogger implements the Logger interface.
@@ -33,7 +33,7 @@ func NewStdLogger() *StdLogger {
 }
 
 // Log delegates the logging to the std logger.
-func (l *StdLogger) Log(v ...interface{}) {
+func (l *StdLogger) Log(v ...any) {
 	log.Println(v...)
 }
 

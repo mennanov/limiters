@@ -320,7 +320,7 @@ func (s *LimitersTestSuite) TestSlidingWindowOverflowAndNoWait() {
 			clock.reset()
 
 			// Keep sending requests until it reaches the capacity.
-			for i := int64(0); i < capacity; i++ {
+			for range capacity {
 				w, err := bucket.Limit(context.TODO())
 				s.Require().NoError(err)
 				s.Require().Equal(time.Duration(0), w)
@@ -334,7 +334,7 @@ func (s *LimitersTestSuite) TestSlidingWindowOverflowAndNoWait() {
 			expected := clock.Now().Add(w)
 
 			// Send a few more requests, all of them should be told to come back at the same time.
-			for i := int64(0); i < capacity; i++ {
+			for i := range capacity {
 				w, err = bucket.Limit(context.TODO())
 				s.Require().Equal(l.ErrLimitExhausted, err)
 

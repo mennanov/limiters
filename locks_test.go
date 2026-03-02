@@ -33,7 +33,7 @@ func (s *LimitersTestSuite) TestDistLockers() {
 			rounds := 6
 			sleep := time.Millisecond * 50
 
-			for i := 0; i < rounds; i++ {
+			for range rounds {
 				wg := sync.WaitGroup{}
 				wg.Add(2)
 
