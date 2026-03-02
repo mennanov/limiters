@@ -1,6 +1,6 @@
 module github.com/mennanov/limiters
 
-// <block name="go-version" affects=".github/workflows/tests.yml:go-version">
+// <block name="go-version" affects=".github/workflows/tests.yml:go-version, .github/workflows/vet.yml:go-version">
 go 1.25.7
 
 // </block>

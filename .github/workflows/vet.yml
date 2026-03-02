@@ -16,9 +16,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Setup Go 1.25
+      - name: Setup Go 1.26
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          # <block name="go-version">
+          go-version: '1.26'
+          # </block>
       - name: Go vet
         run: go vet ./...
