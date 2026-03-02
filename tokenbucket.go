@@ -6,6 +6,7 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math"
 	"net/http"
 	"strconv"
@@ -126,10 +127,7 @@ func (t *TokenBucket) takeMinMax(ctx context.Context, minTokens, maxTokens int64
 	}
 
 	// Take as many tokens between minTokens and maxTokens as possible.
-	tokens := maxTokens
-	if tokens > state.Available {
-		tokens = state.Available
-	}
+	tokens := min(maxTokens, state.Available)
 
 	// Take the tokens from the bucket.
 	state.Available -= tokens
@@ -930,9 +928,7 @@ func (t *TokenBucketDynamoDB) getGetItemInput() *dynamodb.GetItemInput {
 
 func (t *TokenBucketDynamoDB) getPutItemInputFromState(state TokenBucketState) *dynamodb.PutItemInput {
 	item := map[string]types.AttributeValue{}
-	for k, v := range t.keys {
-		item[k] = v
-	}
+	maps.Copy(item, t.keys)
 
 	item[dynamoDBBucketLastKey] = &types.AttributeValueMemberN{Value: strconv.FormatInt(state.Last, 10)}
 

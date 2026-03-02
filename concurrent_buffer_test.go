@@ -40,7 +40,7 @@ func (s *LimitersTestSuite) TestConcurrentBufferNoOverflow() {
 	for name, buffer := range s.concurrentBuffers(capacity, ttl, clock) {
 		s.Run(name, func() {
 			wg := sync.WaitGroup{}
-			for i := int64(0); i < capacity; i++ {
+			for i := range capacity {
 				wg.Add(1)
 
 				go func(i int64, buffer *l.ConcurrentBuffer) {
@@ -49,7 +49,7 @@ func (s *LimitersTestSuite) TestConcurrentBufferNoOverflow() {
 					key := fmt.Sprintf("key%d", i)
 					s.NoError(buffer.Limit(context.TODO(), key))
 					s.NoError(buffer.Done(context.TODO(), key))
-				}(i, buffer)
+				}(int64(i), buffer)
 			}
 
 			wg.Wait()

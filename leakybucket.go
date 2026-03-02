@@ -6,6 +6,7 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math"
 	"net/http"
 	"strconv"
@@ -366,7 +367,7 @@ func NewLeakyBucketRedis(cli redis.UniversalClient, prefix string, ttl time.Dura
 // Deprecated: Legacy format support will be removed in a future version.
 func (t *LeakyBucketRedis) oldState(ctx context.Context) (LeakyBucketState, error) {
 	var (
-		values []interface{}
+		values []any
 		err    error
 	)
 
@@ -799,9 +800,7 @@ const (
 
 func (t *LeakyBucketDynamoDB) getPutItemInputFromState(state LeakyBucketState) *dynamodb.PutItemInput {
 	item := map[string]types.AttributeValue{}
-	for k, v := range t.keys {
-		item[k] = v
-	}
+	maps.Copy(item, t.keys)
 
 	item[dynamoDBBucketLastKey] = &types.AttributeValueMemberN{Value: strconv.FormatInt(state.Last, 10)}
 
