@@ -230,7 +230,7 @@ func (s *LimitersTestSuite) TestLimitContextCancelled() {
 	capacity := int64(2)
 	rate := time.Second
 
-	limiters := make(map[string]interface{})
+	limiters := make(map[string]any)
 	for n, b := range s.tokenBuckets(capacity, rate, time.Second, clock) {
 		limiters[n] = b
 	}
@@ -263,7 +263,7 @@ func (s *LimitersTestSuite) TestLimitContextCancelled() {
 		s.Run(name, func() {
 			done1 := make(chan struct{})
 
-			go func(limiter interface{}) {
+			go func(limiter any) {
 				defer close(done1)
 				// The context is expired shortly after it is created.
 				ctx, cancel := context.WithCancel(context.Background())
@@ -281,7 +281,7 @@ func (s *LimitersTestSuite) TestLimitContextCancelled() {
 
 			done2 := make(chan struct{})
 
-			go func(limiter interface{}) {
+			go func(limiter any) {
 				defer close(done2)
 
 				<-done1

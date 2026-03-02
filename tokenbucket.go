@@ -478,7 +478,7 @@ func NewTokenBucketRedis(cli redis.UniversalClient, prefix string, ttl time.Dura
 // Deprecated: Legacy format support will be removed in a future version.
 func (t *TokenBucketRedis) oldState(ctx context.Context) (TokenBucketState, error) {
 	var (
-		values []interface{}
+		values []any
 		err    error
 	)
 

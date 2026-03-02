@@ -59,7 +59,7 @@ func Example_simpleGRPCLimiter() {
 
 	// Add a unary interceptor middleware to rate limit all requests.
 	s := grpc.NewServer(grpc.UnaryInterceptor(
-		func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 			w, err := limiter.Limit(ctx)
 			if errors.Is(err, limiters.ErrLimitExhausted) {
 				return nil, status.Errorf(codes.ResourceExhausted, "try again later in %s", w)

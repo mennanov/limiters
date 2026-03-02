@@ -8,7 +8,7 @@ import (
 
 // pqItem is an item in the priority queue.
 type pqItem struct {
-	value interface{}
+	value any
 	exp   time.Time
 	index int
 	key   string
@@ -29,14 +29,14 @@ func (pq gcPq) Swap(i, j int) {
 	pq[j].index = j
 }
 
-func (pq *gcPq) Push(x interface{}) {
+func (pq *gcPq) Push(x any) {
 	n := len(*pq)
 	item := x.(*pqItem)
 	item.index = n
 	*pq = append(*pq, item)
 }
 
-func (pq *gcPq) Pop() interface{} {
+func (pq *gcPq) Pop() any {
 	old := *pq
 	n := len(old)
 	item := old[n-1]
@@ -63,7 +63,7 @@ func NewRegistry() *Registry {
 
 // GetOrCreate gets an existing value by key and updates its expiration time.
 // If the key lookup fails it creates a new value by calling the provided value closure and puts it on the queue.
-func (r *Registry) GetOrCreate(key string, value func() interface{}, ttl time.Duration, now time.Time) interface{} {
+func (r *Registry) GetOrCreate(key string, value func() any, ttl time.Duration, now time.Time) any {
 	r.mx.Lock()
 	defer r.mx.Unlock()
 

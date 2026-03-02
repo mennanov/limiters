@@ -66,7 +66,7 @@ func Example_ipGRPCLimiter() {
 
 	// Add a unary interceptor middleware to rate limit requests.
 	s := grpc.NewServer(grpc.UnaryInterceptor(
-		func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 			p, ok := peer.FromContext(ctx)
 
 			var ip string
@@ -80,7 +80,7 @@ func Example_ipGRPCLimiter() {
 			}
 
 			// Create an IP address based rate limiter.
-			bucket := registry.GetOrCreate(ip, func() interface{} {
+			bucket := registry.GetOrCreate(ip, func() any {
 				return limiters.NewTokenBucket(
 					2,
 					rate,

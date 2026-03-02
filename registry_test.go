@@ -27,7 +27,7 @@ func TestRegistry_GetOrCreate(t *testing.T) {
 	called := false
 	clock := newFakeClock()
 	limiter := newTestingLimiter()
-	l := registry.GetOrCreate("key", func() interface{} {
+	l := registry.GetOrCreate("key", func() any {
 		called = true
 
 		return limiter
@@ -36,7 +36,7 @@ func TestRegistry_GetOrCreate(t *testing.T) {
 	// Verify that the closure was called to create a value.
 	assert.True(t, called)
 	called = false
-	l = registry.GetOrCreate("key", func() interface{} {
+	l = registry.GetOrCreate("key", func() any {
 		called = true
 
 		return newTestingLimiter()
@@ -51,14 +51,14 @@ func TestRegistry_DeleteExpired(t *testing.T) {
 	clock := newFakeClock()
 	// Add limiters to the registry.
 	for i := 1; i <= 10; i++ {
-		registry.GetOrCreate(fmt.Sprintf("key%d", i), func() interface{} {
+		registry.GetOrCreate(fmt.Sprintf("key%d", i), func() any {
 			return newTestingLimiter()
 		}, time.Second*time.Duration(i), clock.Now())
 	}
 
 	clock.Sleep(time.Second * 3)
 	// "touch" the "key3" value that is about to be expired so that its expiration time is extended for 1s.
-	registry.GetOrCreate("key3", func() interface{} {
+	registry.GetOrCreate("key3", func() any {
 		return newTestingLimiter()
 	}, time.Second, clock.Now())
 
@@ -77,10 +77,10 @@ func TestRegistry_Delete(t *testing.T) {
 	registry := limiters.NewRegistry()
 	clock := newFakeClock()
 	item := &struct{}{}
-	require.Equal(t, item, registry.GetOrCreate("key", func() interface{} {
+	require.Equal(t, item, registry.GetOrCreate("key", func() any {
 		return item
 	}, time.Second, clock.Now()))
-	require.Equal(t, item, registry.GetOrCreate("key", func() interface{} {
+	require.Equal(t, item, registry.GetOrCreate("key", func() any {
 		return &struct{}{}
 	}, time.Second, clock.Now()))
 	registry.Delete("key")
@@ -92,13 +92,13 @@ func TestRegistry_ConcurrentUsage(t *testing.T) {
 	registry := limiters.NewRegistry()
 	clock := newFakeClock()
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		go func(i int) {
-			registry.GetOrCreate(strconv.Itoa(i), func() interface{} { return &struct{}{} }, 0, clock.Now())
+			registry.GetOrCreate(strconv.Itoa(i), func() any { return &struct{}{} }, 0, clock.Now())
 		}(i)
 	}
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		go func(i int) {
 			registry.DeleteExpired(clock.Now())
 		}(i)
