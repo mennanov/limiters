@@ -18,7 +18,7 @@ jobs:
     strategy:
       matrix:
         # <block name="go-version" affects="go.mod:go-version">
-        go-version: [ '1.24', '1.25', '1.26' ]
+        go-version: [ '1.25', '1.26' ]
         # </block>
 
     services:
