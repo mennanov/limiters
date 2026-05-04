@@ -1,7 +1,7 @@
 module github.com/mennanov/limiters
 
 // <block name="go-version" affects=".github/workflows/tests.yml:go-version, .github/workflows/vet.yml:go-version">
-go 1.26
+go 1.25.8
 
 // </block>
 
@@ -18,7 +18,7 @@ require (
 	github.com/cenkalti/backoff/v3 v3.2.2
 	github.com/go-redsync/redsync/v4 v4.16.0
 	github.com/google/uuid v1.6.0
-	github.com/hashicorp/consul/api v1.34.2
+	github.com/hashicorp/consul/api v1.33.4
 	github.com/lib/pq v1.12.3
 	github.com/pkg/errors v0.9.1
 	github.com/redis/go-redis/v9 v9.19.0
