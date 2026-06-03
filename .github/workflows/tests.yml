@@ -18,6 +18,7 @@ jobs:
     strategy:
       matrix:
         # <block name="go-version" affects="go.mod:go-version">
+        # The lowest entry must cover the go directive in go.mod (currently 1.25.x).
         go-version: [ '1.25', '1.26' ]
         # </block>
 
@@ -60,7 +61,11 @@ jobs:
         ports:
           - 5432:5432
       cosmos:
-        image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview
+        # Pinned by digest (vnext-EN20260403, multi-arch amd64+arm64). The rolling
+        # `vnext-preview` tag — and even the dated `vnext-EN*` tags — now serve a
+        # build that stops honoring short document TTLs, breaking the *TTLExpiration
+        # tests with 409 Conflict. Re-pin to a newer digest once that is fixed upstream.
+        image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator@sha256:bf3bd3cbe3fae2005a0745f77b01d1fc8cd04112193f3ee32289ee15ee9ae5fa
         env:
           PROTOCOL: http
           COSMOS_HTTP_CONNECTION_WITHOUT_TLS_ALLOWED: "true"
