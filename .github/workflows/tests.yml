@@ -18,6 +18,7 @@ jobs:
     strategy:
       matrix:
         # <block name="go-version" affects="go.mod:go-version">
+        # The lowest entry must cover the go directive in go.mod (currently 1.25.x).
         go-version: [ '1.25', '1.26' ]
         # </block>
 
