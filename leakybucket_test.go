@@ -173,7 +173,9 @@ func (s *LimitersTestSuite) TestLeakyBucketNoExpiration() {
 	for _, bucket := range buckets {
 		_, _ = bucket.Limit(context.TODO())
 	}
+
 	clock.Sleep(time.Millisecond)
+
 	for _, bucket := range buckets {
 		_, _ = bucket.Limit(context.TODO())
 	}
