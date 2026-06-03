@@ -163,9 +163,18 @@ func (s *LimitersTestSuite) TestLeakyBucketNoExpiration() {
 	clock := l.NewSystemClock()
 	buckets := s.leakyBuckets(1, time.Minute, 0, clock)
 
-	// Take all capacity from all buckets
+	// Take all capacity from all buckets. A leaky bucket only advances (and persists)
+	// its queue for an admitted request, and the second request per bucket is admitted
+	// only when it lands a non-zero duration after the first. Issue the two rounds in
+	// separate passes with a short sleep in between so the requests get distinct clock
+	// readings: the in-memory backend is otherwise fast enough for back-to-back calls
+	// to share a single SystemClock timestamp, which leaves the bucket under-filled and
+	// makes this test flaky.
 	for _, bucket := range buckets {
 		_, _ = bucket.Limit(context.TODO())
+	}
+	clock.Sleep(time.Millisecond)
+	for _, bucket := range buckets {
 		_, _ = bucket.Limit(context.TODO())
 	}
 
