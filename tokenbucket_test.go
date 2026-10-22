@@ -3,6 +3,7 @@ package limiters_test
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"sync"
 	"testing"
@@ -116,6 +117,7 @@ func (s *LimitersTestSuite) TestTokenBucketRealClock() {
 				var mu sync.Mutex
 
 				miss := 0
+				start := clock.Now()
 
 				for i := range testCase.requestCount {
 					// No pause for the first request.
@@ -141,7 +143,12 @@ func (s *LimitersTestSuite) TestTokenBucketRealClock() {
 				}
 
 				wg.Wait()
-				s.InDelta(testCase.missExpected, miss, testCase.delta, testCase)
+
+				// A slow run (e.g. a loaded CI runner) leaves extra time for the bucket to refill, which shifts the
+				// number of misses by one per refill period. Allow for that on top of the base delta.
+				overshoot := max(clock.Now().Sub(start)-time.Duration(testCase.requestCount-1)*testCase.requestRate, 0)
+				delta := testCase.delta + math.Ceil(float64(overshoot)/float64(testCase.refillRate))
+				s.InDelta(testCase.missExpected, miss, delta, "%+v overshoot: %v", testCase, overshoot)
 			})
 		}
 	}

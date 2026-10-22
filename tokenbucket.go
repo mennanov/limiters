@@ -270,9 +270,9 @@ func etcdKey(prefix, key string) string {
 
 // parseEtcdInt64 parses the etcd value into int64.
 func parseEtcdInt64(kv *mvccpb.KeyValue) (int64, error) {
-	v, err := strconv.ParseInt(string(kv.Value), 10, 64)
+	v, err := strconv.ParseInt(string(kv.GetValue()), 10, 64)
 	if err != nil {
-		return 0, errors.Wrapf(err, "failed to parse key '%s' as int64", string(kv.Key))
+		return 0, errors.Wrapf(err, "failed to parse key '%s' as int64", string(kv.GetKey()))
 	}
 
 	return v, nil
@@ -310,7 +310,7 @@ func (t *TokenBucketEtcd) State(ctx context.Context) (TokenBucketState, error) {
 	var v int64
 
 	for _, kv := range r.Kvs {
-		switch string(kv.Key) {
+		switch string(kv.GetKey()) {
 		case etcdKey(t.prefix, etcdKeyTBAvailable):
 			v, err = parseEtcdInt64(kv)
 			if err != nil {
@@ -328,7 +328,7 @@ func (t *TokenBucketEtcd) State(ctx context.Context) (TokenBucketState, error) {
 
 			state.Last = v
 			parsed |= etcdTBParsedLast
-			t.lastVersion = kv.Version
+			t.lastVersion = kv.GetVersion()
 
 		case etcdKey(t.prefix, etcdKeyTBLease):
 			v, err = parseEtcdInt64(kv)

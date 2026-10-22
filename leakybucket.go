@@ -227,7 +227,7 @@ func (l *LeakyBucketEtcd) State(ctx context.Context) (LeakyBucketState, error) {
 	var v int64
 
 	for _, kv := range r.Kvs {
-		switch string(kv.Key) {
+		switch string(kv.GetKey()) {
 		case etcdKey(l.prefix, etcdKeyLBLast):
 			v, err = parseEtcdInt64(kv)
 			if err != nil {
@@ -236,7 +236,7 @@ func (l *LeakyBucketEtcd) State(ctx context.Context) (LeakyBucketState, error) {
 
 			state.Last = v
 			parsed |= etcdLBParsedLast
-			l.lastVersion = kv.Version
+			l.lastVersion = kv.GetVersion()
 
 		case etcdKey(l.prefix, etcdKeyLBLease):
 			v, err = parseEtcdInt64(kv)
