@@ -9,7 +9,6 @@ linters:
     - exhaustruct_v5
     - funcorder
     - funlen
-    - gochecknoglobals
     - godox
     - lll
     - mnd
