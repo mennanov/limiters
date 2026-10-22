@@ -772,7 +772,7 @@ func (t *LeakyBucketDynamoDB) SetState(ctx context.Context, state LeakyBucketSta
 	go func() {
 		defer close(done)
 
-		_, err = dynamoDBputItem(ctx, t.client, input)
+		err = dynamoDBputItem(ctx, t.client, input)
 	}()
 
 	select {

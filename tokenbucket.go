@@ -896,7 +896,7 @@ func (t *TokenBucketDynamoDB) SetState(ctx context.Context, state TokenBucketSta
 	go func() {
 		defer close(done)
 
-		_, err = dynamoDBputItem(ctx, t.client, input)
+		err = dynamoDBputItem(ctx, t.client, input)
 	}()
 
 	select {

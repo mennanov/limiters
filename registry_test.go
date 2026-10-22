@@ -98,9 +98,9 @@ func TestRegistry_ConcurrentUsage(t *testing.T) {
 		}(i)
 	}
 
-	for i := range 10 {
-		go func(i int) {
+	for range 10 {
+		go func() {
 			registry.DeleteExpired(clock.Now())
-		}(i)
+		}()
 	}
 }
