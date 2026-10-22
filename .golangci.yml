@@ -23,7 +23,6 @@ linters:
     - perfsprint
     - revive
     - tagliatelle
-    - testifylint
     - unparam
     - varnamelen
     - wrapcheck
