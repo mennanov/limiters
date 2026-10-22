@@ -21,7 +21,6 @@ linters:
     - paralleltest
     - perfsprint
     - revive
-    - tagliatelle
     - unparam
     - varnamelen
     - wrapcheck
