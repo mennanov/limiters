@@ -139,7 +139,7 @@ func BenchmarkConcurrentBuffers(b *testing.B) {
 	buffers := s.concurrentBuffers(capacity, ttl, clock)
 	for name, buffer := range buffers {
 		b.Run(name, func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
+			for range b.N {
 				s.Require().NoError(buffer.Limit(context.TODO(), "key1"))
 			}
 		})

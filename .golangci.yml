@@ -5,33 +5,17 @@ linters:
     - cyclop
     - depguard
     - dupl
-    - dupword
     - exhaustruct
     - exhaustruct_v5
-    - forcetypeassert
     - funcorder
     - funlen
-    - gochecknoglobals
-    - goconst
-    - gocritic
     - godox
-    - gomoddirectives
-    - gosec
-    - inamedparam
-    - intrange
     - lll
-    - mnd
     - musttag
-    - paralleltest
     - perfsprint
-    - recvcheck
     - revive
-    - tagliatelle
-    - testifylint
-    - unparam
     - varnamelen
     - wrapcheck
-    - wsl
   exclusions:
     generated: lax
     presets:

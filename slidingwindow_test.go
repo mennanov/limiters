@@ -30,7 +30,7 @@ func (s *LimitersTestSuite) slidingWindowIncrementers() map[string]l.SlidingWind
 	}
 }
 
-var slidingWindowTestCases = []struct {
+type slidingWindowTestCase struct {
 	capacity int64
 	rate     time.Duration
 	epsilon  float64
@@ -40,265 +40,269 @@ var slidingWindowTestCases = []struct {
 	}
 	requests int
 	delta    float64
-}{
-	{
-		capacity: 1,
-		rate:     time.Second,
-		epsilon:  1e-9,
-		requests: 6,
-		results: []struct {
-			w time.Duration
-			e error
-		}{
-			{
-				0, nil,
-			},
-			{
-				time.Second * 2, l.ErrLimitExhausted,
-			},
-			{
-				0, nil,
-			},
-			{
-				time.Second * 2, l.ErrLimitExhausted,
-			},
-			{
-				0, nil,
-			},
-			{
-				time.Second * 2, l.ErrLimitExhausted,
-			},
-		},
-	},
-	{
-		capacity: 2,
-		rate:     time.Second,
-		epsilon:  3e-9,
-		requests: 10,
-		delta:    1,
-		results: []struct {
-			w time.Duration
-			e error
-		}{
-			{
-				0, nil,
-			},
-			{
-				0, nil,
-			},
-			{
-				time.Second + time.Second*2/3, l.ErrLimitExhausted,
-			},
-			{
-				0, nil,
-			},
-			{
-				time.Second/3 + time.Second/2, l.ErrLimitExhausted,
-			},
-			{
-				0, nil,
-			},
-			{
-				time.Second, l.ErrLimitExhausted,
-			},
-			{
-				0, nil,
-			},
-			{
-				time.Second, l.ErrLimitExhausted,
-			},
-			{
-				0, nil,
+}
+
+func slidingWindowTestCases() []slidingWindowTestCase {
+	return []slidingWindowTestCase{
+		{
+			capacity: 1,
+			rate:     time.Second,
+			epsilon:  1e-9,
+			requests: 6,
+			results: []struct {
+				w time.Duration
+				e error
+			}{
+				{
+					0, nil,
+				},
+				{
+					time.Second * 2, l.ErrLimitExhausted,
+				},
+				{
+					0, nil,
+				},
+				{
+					time.Second * 2, l.ErrLimitExhausted,
+				},
+				{
+					0, nil,
+				},
+				{
+					time.Second * 2, l.ErrLimitExhausted,
+				},
 			},
 		},
-	},
-	{
-		capacity: 3,
-		rate:     time.Second,
-		epsilon:  1e-9,
-		requests: 11,
-		delta:    0,
-		results: []struct {
-			w time.Duration
-			e error
-		}{
-			{
-				0, nil,
-			},
-			{
-				0, nil,
-			},
-			{
-				0, nil,
-			},
-			{
-				time.Second + time.Second/2, l.ErrLimitExhausted,
-			},
-			{
-				0, nil,
-			},
-			{
-				time.Second / 2, l.ErrLimitExhausted,
-			},
-			{
-				0, nil,
-			},
-			{
-				time.Second, l.ErrLimitExhausted,
-			},
-			{
-				0, nil,
-			},
-			{
-				time.Second, l.ErrLimitExhausted,
-			},
-			{
-				0, nil,
+		{
+			capacity: 2,
+			rate:     time.Second,
+			epsilon:  3e-9,
+			requests: 10,
+			delta:    1,
+			results: []struct {
+				w time.Duration
+				e error
+			}{
+				{
+					0, nil,
+				},
+				{
+					0, nil,
+				},
+				{
+					time.Second + time.Second*2/3, l.ErrLimitExhausted,
+				},
+				{
+					0, nil,
+				},
+				{
+					time.Second/3 + time.Second/2, l.ErrLimitExhausted,
+				},
+				{
+					0, nil,
+				},
+				{
+					time.Second, l.ErrLimitExhausted,
+				},
+				{
+					0, nil,
+				},
+				{
+					time.Second, l.ErrLimitExhausted,
+				},
+				{
+					0, nil,
+				},
 			},
 		},
-	},
-	{
-		capacity: 4,
-		rate:     time.Second,
-		epsilon:  1e-9,
-		requests: 17,
-		delta:    0,
-		results: []struct {
-			w time.Duration
-			e error
-		}{
-			{
-				0, nil,
-			},
-			{
-				0, nil,
-			},
-			{
-				0, nil,
-			},
-			{
-				0, nil,
-			},
-			{
-				time.Second + time.Second*2/5, l.ErrLimitExhausted,
-			},
-			{
-				0, nil,
-			},
-			{
-				time.Second * 2 / 5, l.ErrLimitExhausted,
-			},
-			{
-				0, nil,
-			},
-			{
-				time.Second/5 + time.Second/4, l.ErrLimitExhausted,
-			},
-			{
-				0, nil,
-			},
-			{
-				time.Second / 2, l.ErrLimitExhausted,
-			},
-			{
-				0, nil,
-			},
-			{
-				time.Second / 2, l.ErrLimitExhausted,
-			},
-			{
-				0, nil,
-			},
-			{
-				time.Second / 2, l.ErrLimitExhausted,
-			},
-			{
-				0, nil,
-			},
-			{
-				time.Second / 2, l.ErrLimitExhausted,
+		{
+			capacity: 3,
+			rate:     time.Second,
+			epsilon:  1e-9,
+			requests: 11,
+			delta:    0,
+			results: []struct {
+				w time.Duration
+				e error
+			}{
+				{
+					0, nil,
+				},
+				{
+					0, nil,
+				},
+				{
+					0, nil,
+				},
+				{
+					time.Second + time.Second/2, l.ErrLimitExhausted,
+				},
+				{
+					0, nil,
+				},
+				{
+					time.Second / 2, l.ErrLimitExhausted,
+				},
+				{
+					0, nil,
+				},
+				{
+					time.Second, l.ErrLimitExhausted,
+				},
+				{
+					0, nil,
+				},
+				{
+					time.Second, l.ErrLimitExhausted,
+				},
+				{
+					0, nil,
+				},
 			},
 		},
-	},
-	{
-		capacity: 5,
-		rate:     time.Second,
-		epsilon:  3e-9,
-		requests: 18,
-		delta:    1,
-		results: []struct {
-			w time.Duration
-			e error
-		}{
-			{
-				0, nil,
-			},
-			{
-				0, nil,
-			},
-			{
-				0, nil,
-			},
-			{
-				0, nil,
-			},
-			{
-				0, nil,
-			},
-			{
-				time.Second + time.Second/3, l.ErrLimitExhausted,
-			},
-			{
-				0, nil,
-			},
-			{
-				time.Second * 2 / 6, l.ErrLimitExhausted,
-			},
-			{
-				0, nil,
-			},
-			{
-				time.Second * 2 / 6, l.ErrLimitExhausted,
-			},
-			{
-				0, nil,
-			},
-			{
-				time.Second / 2, l.ErrLimitExhausted,
-			},
-			{
-				0, nil,
-			},
-			{
-				time.Second / 2, l.ErrLimitExhausted,
-			},
-			{
-				0, nil,
-			},
-			{
-				time.Second / 2, l.ErrLimitExhausted,
-			},
-			{
-				0, nil,
-			},
-			{
-				time.Second / 2, l.ErrLimitExhausted,
-			},
-			{
-				0, nil,
+		{
+			capacity: 4,
+			rate:     time.Second,
+			epsilon:  1e-9,
+			requests: 17,
+			delta:    0,
+			results: []struct {
+				w time.Duration
+				e error
+			}{
+				{
+					0, nil,
+				},
+				{
+					0, nil,
+				},
+				{
+					0, nil,
+				},
+				{
+					0, nil,
+				},
+				{
+					time.Second + time.Second*2/5, l.ErrLimitExhausted,
+				},
+				{
+					0, nil,
+				},
+				{
+					time.Second * 2 / 5, l.ErrLimitExhausted,
+				},
+				{
+					0, nil,
+				},
+				{
+					time.Second/5 + time.Second/4, l.ErrLimitExhausted,
+				},
+				{
+					0, nil,
+				},
+				{
+					time.Second / 2, l.ErrLimitExhausted,
+				},
+				{
+					0, nil,
+				},
+				{
+					time.Second / 2, l.ErrLimitExhausted,
+				},
+				{
+					0, nil,
+				},
+				{
+					time.Second / 2, l.ErrLimitExhausted,
+				},
+				{
+					0, nil,
+				},
+				{
+					time.Second / 2, l.ErrLimitExhausted,
+				},
 			},
 		},
-	},
+		{
+			capacity: 5,
+			rate:     time.Second,
+			epsilon:  3e-9,
+			requests: 18,
+			delta:    1,
+			results: []struct {
+				w time.Duration
+				e error
+			}{
+				{
+					0, nil,
+				},
+				{
+					0, nil,
+				},
+				{
+					0, nil,
+				},
+				{
+					0, nil,
+				},
+				{
+					0, nil,
+				},
+				{
+					time.Second + time.Second/3, l.ErrLimitExhausted,
+				},
+				{
+					0, nil,
+				},
+				{
+					time.Second * 2 / 6, l.ErrLimitExhausted,
+				},
+				{
+					0, nil,
+				},
+				{
+					time.Second * 2 / 6, l.ErrLimitExhausted,
+				},
+				{
+					0, nil,
+				},
+				{
+					time.Second / 2, l.ErrLimitExhausted,
+				},
+				{
+					0, nil,
+				},
+				{
+					time.Second / 2, l.ErrLimitExhausted,
+				},
+				{
+					0, nil,
+				},
+				{
+					time.Second / 2, l.ErrLimitExhausted,
+				},
+				{
+					0, nil,
+				},
+				{
+					time.Second / 2, l.ErrLimitExhausted,
+				},
+				{
+					0, nil,
+				},
+			},
+		},
+	}
 }
 
 func (s *LimitersTestSuite) TestSlidingWindowOverflowAndWait() {
 	clock := newFakeClockWithTime(time.Date(2019, 9, 3, 0, 0, 0, 0, time.UTC))
-	for _, testCase := range slidingWindowTestCases {
+	for _, testCase := range slidingWindowTestCases() {
 		for name, bucket := range s.slidingWindows(testCase.capacity, testCase.rate, clock, testCase.epsilon) {
 			s.Run(name, func() {
 				clock.reset()
 
-				for i := 0; i < testCase.requests; i++ {
+				for i := range testCase.requests {
 					w, err := bucket.Limit(context.TODO())
 
 					s.Require().LessOrEqual(i, len(testCase.results)-1)
@@ -353,6 +357,17 @@ func (s *LimitersTestSuite) TestSlidingWindowOverflowAndNoWait() {
 	}
 }
 
+// TestSlidingWindowCosmosDBLongTTL verifies that Cosmos DB accepts the TTL of a window that is longer than a few seconds.
+func (s *LimitersTestSuite) TestSlidingWindowCosmosDBLongTTL() {
+	clock := newFakeClockWithTime(time.Date(2019, 9, 3, 0, 0, 0, 0, time.UTC))
+	incrementor := l.NewSlidingWindowCosmosDB(s.cosmosContainerClient, uuid.New().String())
+	window := l.NewSlidingWindow(1, time.Minute, incrementor, clock, 1e-9)
+
+	w, err := window.Limit(context.TODO())
+	s.Require().NoError(err)
+	s.Equal(time.Duration(0), w)
+}
+
 func BenchmarkSlidingWindows(b *testing.B) {
 	s := new(LimitersTestSuite)
 	s.SetT(&testing.T{})
@@ -366,7 +381,7 @@ func BenchmarkSlidingWindows(b *testing.B) {
 	windows := s.slidingWindows(capacity, rate, clock, epsilon)
 	for name, window := range windows {
 		b.Run(name, func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
+			for range b.N {
 				_, err := window.Limit(context.TODO())
 				s.Require().NoError(err)
 			}

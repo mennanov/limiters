@@ -3,6 +3,7 @@ package limiters
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"net/http"
 	"time"
 
@@ -11,8 +12,14 @@ import (
 	"github.com/pkg/errors"
 )
 
+// cosmosTTL converts ttl to the Cosmos DB TTL value: whole seconds rounded up, at least 1 (Cosmos rejects 0 and
+// negative values other than -1) and at most math.MaxInt32.
+func cosmosTTL(ttl time.Duration) int32 {
+	return clampInt32(max(int64(math.Ceil(ttl.Seconds())), 1))
+}
+
 type cosmosItem struct {
-	Count        int64  `json:"Count"`
+	Count        int64  `json:"Count"` //nolint:tagliatelle // Persisted field name; renaming would break existing items.
 	PartitionKey string `json:"partitionKey"`
 	ID           string `json:"id"`
 	TTL          int32  `json:"ttl"`
@@ -42,7 +49,7 @@ func incrementCosmosItemRMW(ctx context.Context, client *azcosmos.ContainerClien
 		}
 
 		existing.Count++
-		existing.TTL = int32(ttl)
+		existing.TTL = cosmosTTL(ttl)
 
 		updated, err := json.Marshal(existing)
 		if err != nil {

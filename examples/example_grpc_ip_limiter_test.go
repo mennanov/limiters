@@ -38,7 +38,7 @@ func Example_ipGRPCLimiter() {
 		DialTimeout: time.Second,
 	})
 	if err != nil {
-		log.Fatalf("could not connect to etcd: %v", err)
+		log.Fatalf("could not connect to etcd: %v", err) //nolint:gocritic // Example code: skipping the deferred cleanups on exit is fine.
 	}
 	defer etcdClient.Close()
 	// Connect to Redis.
@@ -92,7 +92,12 @@ func Example_ipGRPCLimiter() {
 					clock, logger)
 			}, rate, clock.Now())
 
-			w, err := bucket.(*limiters.TokenBucket).Limit(ctx)
+			tokenBucket, ok := bucket.(*limiters.TokenBucket)
+			if !ok {
+				return nil, status.Error(codes.Internal, "internal error")
+			}
+
+			w, err := tokenBucket.Limit(ctx)
 			if errors.Is(err, limiters.ErrLimitExhausted) {
 				return nil, status.Errorf(codes.ResourceExhausted, "try again later in %s", w)
 			} else if err != nil {

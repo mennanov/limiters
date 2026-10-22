@@ -23,6 +23,8 @@ func (l *testingLimiter) Limit(context.Context) (time.Duration, error) {
 }
 
 func TestRegistry_GetOrCreate(t *testing.T) {
+	t.Parallel()
+
 	registry := limiters.NewRegistry()
 	called := false
 	clock := newFakeClock()
@@ -47,6 +49,8 @@ func TestRegistry_GetOrCreate(t *testing.T) {
 }
 
 func TestRegistry_DeleteExpired(t *testing.T) {
+	t.Parallel()
+
 	registry := limiters.NewRegistry()
 	clock := newFakeClock()
 	// Add limiters to the registry.
@@ -74,6 +78,8 @@ func TestRegistry_DeleteExpired(t *testing.T) {
 }
 
 func TestRegistry_Delete(t *testing.T) {
+	t.Parallel()
+
 	registry := limiters.NewRegistry()
 	clock := newFakeClock()
 	item := &struct{}{}
@@ -89,6 +95,8 @@ func TestRegistry_Delete(t *testing.T) {
 
 // This test is expected to fail when run with the --race flag.
 func TestRegistry_ConcurrentUsage(t *testing.T) {
+	t.Parallel()
+
 	registry := limiters.NewRegistry()
 	clock := newFakeClock()
 
@@ -98,9 +106,9 @@ func TestRegistry_ConcurrentUsage(t *testing.T) {
 		}(i)
 	}
 
-	for i := range 10 {
-		go func(i int) {
+	for range 10 {
+		go func() {
 			registry.DeleteExpired(clock.Now())
-		}(i)
+		}()
 	}
 }

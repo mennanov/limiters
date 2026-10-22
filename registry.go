@@ -2,6 +2,7 @@ package limiters
 
 import (
 	"container/heap"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -17,21 +18,26 @@ type pqItem struct {
 // gcPq is a priority queue.
 type gcPq []*pqItem
 
-func (pq gcPq) Len() int { return len(pq) }
+func (pq *gcPq) Len() int { return len(*pq) }
 
-func (pq gcPq) Less(i, j int) bool {
-	return pq[i].exp.Before(pq[j].exp)
+func (pq *gcPq) Less(i, j int) bool {
+	return (*pq)[i].exp.Before((*pq)[j].exp)
 }
 
-func (pq gcPq) Swap(i, j int) {
-	pq[i], pq[j] = pq[j], pq[i]
-	pq[i].index = i
-	pq[j].index = j
+func (pq *gcPq) Swap(i, j int) {
+	(*pq)[i], (*pq)[j] = (*pq)[j], (*pq)[i]
+	(*pq)[i].index = i
+	(*pq)[j].index = j
 }
 
 func (pq *gcPq) Push(x any) {
 	n := len(*pq)
-	item := x.(*pqItem)
+
+	item, ok := x.(*pqItem)
+	if !ok {
+		panic(fmt.Sprintf("gcPq: unexpected item type %T, expected *pqItem", x))
+	}
+
 	item.index = n
 	*pq = append(*pq, item)
 }

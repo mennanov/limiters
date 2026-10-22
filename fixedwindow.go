@@ -231,7 +231,7 @@ func NewFixedWindowDynamoDB(client *dynamodb.Client, partitionKey string, props 
 
 type contextKey int
 
-var fixedWindowDynamoDBPartitionKey contextKey
+const fixedWindowDynamoDBPartitionKey contextKey = 0
 
 // NewFixedWindowDynamoDBContext creates a context for FixedWindowDynamoDB with a partition key.
 //
@@ -329,7 +329,7 @@ func (f *FixedWindowCosmosDB) Increment(ctx context.Context, window time.Time, t
 		ID:           id,
 		PartitionKey: f.partitionKey,
 		Count:        1,
-		TTL:          int32(ttl),
+		TTL:          cosmosTTL(ttl),
 	}
 
 	ops := azcosmos.PatchOperations{}

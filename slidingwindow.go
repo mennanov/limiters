@@ -159,13 +159,14 @@ func (s *SlidingWindowRedis) Increment(ctx context.Context, prev, curr time.Time
 
 	select {
 	case <-done:
-		if errors.Is(err, redis.TxFailedErr) {
+		switch {
+		case errors.Is(err, redis.TxFailedErr):
 			return 0, 0, errors.Wrap(err, "redis transaction failed")
-		} else if errors.Is(err, redis.Nil) {
+		case errors.Is(err, redis.Nil):
 			prevCount = 0
-		} else if err != nil {
+		case err != nil:
 			return 0, 0, errors.Wrap(err, "unexpected error from redis")
-		} else {
+		default:
 			prevCount, err = strconv.ParseInt(prevCountCmd.Val(), 10, 64)
 			if err != nil {
 				return 0, 0, errors.Wrap(err, "failed to parse response from redis")
@@ -284,24 +285,13 @@ func NewSlidingWindowDynamoDB(client *dynamodb.Client, partitionKey string, prop
 // and the current one.
 func (s *SlidingWindowDynamoDB) Increment(ctx context.Context, prev, curr time.Time, ttl time.Duration) (int64, int64, error) {
 	wg := &sync.WaitGroup{}
-	wg.Add(2)
-
-	done := make(chan struct{})
-
-	go func() {
-		defer close(done)
-
-		wg.Wait()
-	}()
 
 	var (
 		currentCount int64
 		currentErr   error
 	)
 
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		resp, err := s.client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 			Key: map[string]types.AttributeValue{
 				s.tableProps.PartitionKeyName: &types.AttributeValueMemberS{Value: s.partitionKey},
@@ -336,16 +326,14 @@ func (s *SlidingWindowDynamoDB) Increment(ctx context.Context, prev, curr time.T
 		}
 
 		currentCount = int64(tmp)
-	}()
+	})
 
 	var (
 		priorCount int64
 		priorErr   error
 	)
 
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		resp, err := s.client.GetItem(ctx, &dynamodb.GetItemInput{
 			TableName: aws.String(s.tableProps.TableName),
 			Key: map[string]types.AttributeValue{
@@ -376,6 +364,15 @@ func (s *SlidingWindowDynamoDB) Increment(ctx context.Context, prev, curr time.T
 		}
 
 		priorCount = int64(count)
+	})
+
+	// Start waiting only after all the goroutines are registered with the wait group.
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+
+		wg.Wait()
 	}()
 
 	select {
@@ -412,30 +409,19 @@ func NewSlidingWindowCosmosDB(client *azcosmos.ContainerClient, partitionKey str
 // and the current one.
 func (s *SlidingWindowCosmosDB) Increment(ctx context.Context, prev, curr time.Time, ttl time.Duration) (int64, int64, error) {
 	wg := &sync.WaitGroup{}
-	wg.Add(2)
-
-	done := make(chan struct{})
-
-	go func() {
-		defer close(done)
-
-		wg.Wait()
-	}()
 
 	var (
 		currentCount int64
 		currentErr   error
 	)
 
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		id := strconv.FormatInt(curr.UnixNano(), 10)
 		tmp := cosmosItem{
 			ID:           id,
 			PartitionKey: s.partitionKey,
 			Count:        1,
-			TTL:          int32(ttl),
+			TTL:          cosmosTTL(ttl),
 		}
 
 		ops := azcosmos.PatchOperations{}
@@ -489,16 +475,14 @@ func (s *SlidingWindowCosmosDB) Increment(ctx context.Context, prev, curr time.T
 		}
 
 		currentCount = tmp.Count
-	}()
+	})
 
 	var (
 		priorCount int64
 		priorErr   error
 	)
 
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		id := strconv.FormatInt(prev.UnixNano(), 10)
 
 		resp, err := s.client.ReadItem(ctx, azcosmos.NewPartitionKey().AppendString(s.partitionKey), id, &azcosmos.ItemOptions{})
@@ -525,6 +509,15 @@ func (s *SlidingWindowCosmosDB) Increment(ctx context.Context, prev, curr time.T
 		}
 
 		priorCount = tmp.Count
+	})
+
+	// Start waiting only after all the goroutines are registered with the wait group.
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+
+		wg.Wait()
 	}()
 
 	select {

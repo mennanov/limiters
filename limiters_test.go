@@ -27,6 +27,13 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
+const (
+	// Dummy credentials for the local DynamoDB.
+	testAWSDummyValue = "dummy"
+	// Fixed key shared by all the distributed lockers when random keys are not requested.
+	testFixedLockKey = "dist_locker"
+)
+
 type fakeClock struct {
 	mu      sync.Mutex
 	initial time.Time
@@ -121,7 +128,7 @@ func (s *LimitersTestSuite) SetupSuite() {
 		config.WithRegion("us-east-1"),
 		config.WithCredentialsProvider(credentials.StaticCredentialsProvider{
 			Value: aws.Credentials{
-				AccessKeyID: "dummy", SecretAccessKey: "dummy", SessionToken: "dummy",
+				AccessKeyID: testAWSDummyValue, SecretAccessKey: testAWSDummyValue, SessionToken: testAWSDummyValue,
 				Source: "Hard-coded credentials; values are irrelevant for local DynamoDB",
 			},
 		}),
@@ -160,15 +167,16 @@ func (s *LimitersTestSuite) SetupSuite() {
 }
 
 func (s *LimitersTestSuite) TearDownSuite() {
-	s.Assert().NoError(s.etcdClient.Close())
-	s.Assert().NoError(s.redisClient.Close())
-	s.Assert().NoError(s.redisClusterClient.Close())
-	s.Assert().NoError(DeleteTestDynamoDBTable(context.Background(), s.dynamodbClient))
-	s.Assert().NoError(s.memcacheClient.Close())
-	s.Assert().NoError(s.pgDb.Close())
-	s.Assert().NoError(DeleteCosmosDBContainer(context.Background(), s.cosmosClient))
+	s.NoError(s.etcdClient.Close())
+	s.NoError(s.redisClient.Close())
+	s.NoError(s.redisClusterClient.Close())
+	s.NoError(DeleteTestDynamoDBTable(context.Background(), s.dynamodbClient))
+	s.NoError(s.memcacheClient.Close())
+	s.NoError(s.pgDb.Close())
+	s.NoError(DeleteCosmosDBContainer(context.Background(), s.cosmosClient))
 }
 
+//nolint:paralleltest // The suite shares external services and keys, so it must not run in parallel.
 func TestLimitersTestSuite(t *testing.T) {
 	suite.Run(t, new(LimitersTestSuite))
 }
@@ -203,12 +211,12 @@ func (s *LimitersTestSuite) distLockers(generateKeys bool) map[string]l.DistLock
 	pgKey := randomKey
 
 	if !generateKeys {
-		consulKey = "dist_locker"
-		etcdKey = "dist_locker"
-		zkKey = "/dist_locker"
-		redisKey = "dist_locker"
-		memcacheKey = "dist_locker"
-		pgKey = "dist_locker"
+		consulKey = testFixedLockKey
+		etcdKey = testFixedLockKey
+		zkKey = "/" + testFixedLockKey
+		redisKey = testFixedLockKey
+		memcacheKey = testFixedLockKey
+		pgKey = testFixedLockKey
 	}
 
 	consulLock, err := s.consulClient.LockKey(consulKey)
@@ -252,11 +260,11 @@ func (s *LimitersTestSuite) TestLimitContextCancelled() {
 	}
 
 	type rateLimiter interface {
-		Limit(context.Context) (time.Duration, error)
+		Limit(ctx context.Context) (time.Duration, error)
 	}
 
 	type concurrentLimiter interface {
-		Limit(context.Context, string) error
+		Limit(ctx context.Context, key string) error
 	}
 
 	for name, limiter := range limiters {

@@ -30,46 +30,50 @@ func (s *LimitersTestSuite) fixedWindowIncrementers() map[string]l.FixedWindowIn
 	}
 }
 
-var fixedWindowTestCases = []struct {
+type fixedWindowTestCase struct {
 	capacity     int64
 	rate         time.Duration
 	requestCount int
 	requestRate  time.Duration
 	missExpected int
-}{
-	{
-		capacity:     2,
-		rate:         time.Millisecond * 100,
-		requestCount: 20,
-		requestRate:  time.Millisecond * 25,
-		missExpected: 10,
-	},
-	{
-		capacity:     4,
-		rate:         time.Millisecond * 100,
-		requestCount: 20,
-		requestRate:  time.Millisecond * 25,
-		missExpected: 0,
-	},
-	{
-		capacity:     2,
-		rate:         time.Millisecond * 100,
-		requestCount: 15,
-		requestRate:  time.Millisecond * 33,
-		missExpected: 5,
-	},
+}
+
+func fixedWindowTestCases() []fixedWindowTestCase {
+	return []fixedWindowTestCase{
+		{
+			capacity:     2,
+			rate:         time.Millisecond * 100,
+			requestCount: 20,
+			requestRate:  time.Millisecond * 25,
+			missExpected: 10,
+		},
+		{
+			capacity:     4,
+			rate:         time.Millisecond * 100,
+			requestCount: 20,
+			requestRate:  time.Millisecond * 25,
+			missExpected: 0,
+		},
+		{
+			capacity:     2,
+			rate:         time.Millisecond * 100,
+			requestCount: 15,
+			requestRate:  time.Millisecond * 33,
+			missExpected: 5,
+		},
+	}
 }
 
 func (s *LimitersTestSuite) TestFixedWindowFakeClock() {
 	clock := newFakeClockWithTime(time.Date(2019, 8, 30, 0, 0, 0, 0, time.UTC))
-	for _, testCase := range fixedWindowTestCases {
+	for _, testCase := range fixedWindowTestCases() {
 		for name, bucket := range s.fixedWindows(testCase.capacity, testCase.rate, clock) {
 			s.Run(name, func() {
 				clock.reset()
 
 				miss := 0
 
-				for i := 0; i < testCase.requestCount; i++ {
+				for i := range testCase.requestCount {
 					// No pause for the first request.
 					if i > 0 {
 						clock.Sleep(testCase.requestRate)
@@ -113,6 +117,17 @@ func (s *LimitersTestSuite) TestFixedWindowOverflow() {
 	}
 }
 
+// TestFixedWindowCosmosDBLongTTL verifies that Cosmos DB accepts the TTL of a window that is longer than a few seconds.
+func (s *LimitersTestSuite) TestFixedWindowCosmosDBLongTTL() {
+	clock := newFakeClockWithTime(time.Date(2019, 8, 30, 0, 0, 0, 0, time.UTC))
+	incrementor := l.NewFixedWindowCosmosDB(s.cosmosContainerClient, uuid.New().String())
+	window := l.NewFixedWindow(1, time.Minute, incrementor, clock)
+
+	w, err := window.Limit(context.TODO())
+	s.Require().NoError(err)
+	s.Equal(time.Duration(0), w)
+}
+
 func (s *LimitersTestSuite) TestFixedWindowDynamoDBPartitionKey() {
 	clock := newFakeClockWithTime(time.Date(2019, 8, 30, 0, 0, 0, 0, time.UTC))
 	incrementor := l.NewFixedWindowDynamoDB(s.dynamodbClient, "partitionKey1", s.dynamoDBTableProps)
@@ -142,7 +157,7 @@ func BenchmarkFixedWindows(b *testing.B) {
 	windows := s.fixedWindows(capacity, rate, clock)
 	for name, window := range windows {
 		b.Run(name, func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
+			for range b.N {
 				_, err := window.Limit(context.TODO())
 				s.Require().NoError(err)
 			}

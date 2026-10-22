@@ -167,6 +167,13 @@ const (
 	etcdKeyLBLast  = "last"
 )
 
+// Bits of the "parsed" mask in LeakyBucketEtcd.State: one for each key that has been read (or is not needed).
+const (
+	etcdLBParsedLast = 1 << iota
+	etcdLBParsedLease
+	etcdLBParsedAll = etcdLBParsedLast | etcdLBParsedLease
+)
+
 // LeakyBucketEtcd is an etcd implementation of a LeakyBucketStateBackend.
 // See the TokenBucketEtcd description for the details on etcd usage.
 type LeakyBucketEtcd struct {
@@ -214,7 +221,7 @@ func (l *LeakyBucketEtcd) State(ctx context.Context) (LeakyBucketState, error) {
 	parsed := 0
 	if l.ttl == 0 {
 		// Ignore lease when there is no expiration
-		parsed |= 2
+		parsed |= etcdLBParsedLease
 	}
 
 	var v int64
@@ -228,7 +235,7 @@ func (l *LeakyBucketEtcd) State(ctx context.Context) (LeakyBucketState, error) {
 			}
 
 			state.Last = v
-			parsed |= 1
+			parsed |= etcdLBParsedLast
 			l.lastVersion = kv.Version
 
 		case etcdKey(l.prefix, etcdKeyLBLease):
@@ -238,11 +245,11 @@ func (l *LeakyBucketEtcd) State(ctx context.Context) (LeakyBucketState, error) {
 			}
 
 			l.leaseID = clientv3.LeaseID(v)
-			parsed |= 2
+			parsed |= etcdLBParsedLease
 		}
 	}
 
-	if parsed != 3 {
+	if parsed != etcdLBParsedAll {
 		return LeakyBucketState{}, errors.New("failed to get state from etcd: some keys are missing")
 	}
 
@@ -412,13 +419,13 @@ func (t *LeakyBucketRedis) oldState(ctx context.Context) (LeakyBucketState, erro
 		return LeakyBucketState{}, nil
 	}
 
-	last, err := strconv.ParseInt(values[0].(string), 10, 64)
+	last, err := parseRedisInt64(values[0])
 	if err != nil {
 		return LeakyBucketState{}, err
 	}
 
 	if t.raceCheck {
-		t.lastVersion, err = strconv.ParseInt(values[1].(string), 10, 64)
+		t.lastVersion, err = parseRedisInt64(values[1])
 		if err != nil {
 			return LeakyBucketState{}, err
 		}
@@ -476,6 +483,7 @@ func (t *LeakyBucketRedis) State(ctx context.Context) (LeakyBucketState, error) 
 		}
 
 		state = item.State
+
 		if t.raceCheck {
 			t.lastVersion = item.Version
 		}
@@ -534,6 +542,7 @@ func (t *LeakyBucketRedis) SetState(ctx context.Context, state LeakyBucketState)
 			callScript = `redis.call('set', KEYS[1], ARGV[1])`
 		}
 
+		//nolint:dupword // Lua "end end" is not a typo.
 		script := fmt.Sprintf(`
 			local current = redis.call('get', KEYS[1])
 			if current then
@@ -673,7 +682,7 @@ func (t *LeakyBucketMemcached) SetState(ctx context.Context, state LeakyBucketSt
 		}
 		if t.ttl > 30*24*time.Hour {
 			// If the value is over 30 days, it treats it as UNIX timestamp.
-			item.Expiration = int32(time.Now().Add(t.ttl).Unix())
+			item.Expiration = clampInt32(time.Now().Add(t.ttl).Unix())
 		} else if t.ttl > 0 {
 			// Memcached supports expiration in seconds. It's more precise way.
 			item.Expiration = int32(math.Ceil(t.ttl.Seconds()))
@@ -771,7 +780,7 @@ func (t *LeakyBucketDynamoDB) SetState(ctx context.Context, state LeakyBucketSta
 	go func() {
 		defer close(done)
 
-		_, err = dynamoDBputItem(ctx, t.client, input)
+		err = dynamoDBputItem(ctx, t.client, input)
 	}()
 
 	select {

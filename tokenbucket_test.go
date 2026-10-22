@@ -13,62 +13,66 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-var tokenBucketUniformTestCases = []struct {
+type tokenBucketUniformTestCase struct {
 	capacity     int64
 	refillRate   time.Duration
 	requestCount int64
 	requestRate  time.Duration
 	missExpected int
 	delta        float64
-}{
-	{
-		5,
-		time.Millisecond * 100,
-		10,
-		time.Millisecond * 25,
-		3,
-		1,
-	},
-	{
-		10,
-		time.Millisecond * 100,
-		13,
-		time.Millisecond * 25,
-		0,
-		1,
-	},
-	{
-		10,
-		time.Millisecond * 100,
-		15,
-		time.Millisecond * 33,
-		2,
-		1,
-	},
-	{
-		10,
-		time.Millisecond * 100,
-		16,
-		time.Millisecond * 33,
-		2,
-		1,
-	},
-	{
-		10,
-		time.Millisecond * 10,
-		20,
-		time.Millisecond * 10,
-		0,
-		1,
-	},
-	{
-		1,
-		time.Millisecond * 200,
-		10,
-		time.Millisecond * 100,
-		5,
-		2,
-	},
+}
+
+func tokenBucketUniformTestCases() []tokenBucketUniformTestCase {
+	return []tokenBucketUniformTestCase{
+		{
+			5,
+			time.Millisecond * 100,
+			10,
+			time.Millisecond * 25,
+			3,
+			1,
+		},
+		{
+			10,
+			time.Millisecond * 100,
+			13,
+			time.Millisecond * 25,
+			0,
+			1,
+		},
+		{
+			10,
+			time.Millisecond * 100,
+			15,
+			time.Millisecond * 33,
+			2,
+			1,
+		},
+		{
+			10,
+			time.Millisecond * 100,
+			16,
+			time.Millisecond * 33,
+			2,
+			1,
+		},
+		{
+			10,
+			time.Millisecond * 10,
+			20,
+			time.Millisecond * 10,
+			0,
+			1,
+		},
+		{
+			1,
+			time.Millisecond * 200,
+			10,
+			time.Millisecond * 100,
+			5,
+			2,
+		},
+	}
 }
 
 // tokenBuckets returns all the possible TokenBucket combinations.
@@ -104,7 +108,7 @@ func (s *LimitersTestSuite) tokenBucketBackends(ttl time.Duration) map[string]l.
 
 func (s *LimitersTestSuite) TestTokenBucketRealClock() {
 	clock := l.NewSystemClock()
-	for _, testCase := range tokenBucketUniformTestCases {
+	for _, testCase := range tokenBucketUniformTestCases() {
 		for name, bucket := range s.tokenBuckets(testCase.capacity, testCase.refillRate, 0, clock) {
 			s.Run(name, func() {
 				wg := sync.WaitGroup{}
@@ -113,7 +117,7 @@ func (s *LimitersTestSuite) TestTokenBucketRealClock() {
 
 				miss := 0
 
-				for i := int64(0); i < testCase.requestCount; i++ {
+				for i := range testCase.requestCount {
 					// No pause for the first request.
 					if i > 0 {
 						clock.Sleep(testCase.requestRate)
@@ -144,7 +148,7 @@ func (s *LimitersTestSuite) TestTokenBucketRealClock() {
 }
 
 func (s *LimitersTestSuite) TestTokenBucketFakeClock() {
-	for _, testCase := range tokenBucketUniformTestCases {
+	for _, testCase := range tokenBucketUniformTestCases() {
 		clock := newFakeClock()
 		for name, bucket := range s.tokenBuckets(testCase.capacity, testCase.refillRate, 0, clock) {
 			s.Run(name, func() {
@@ -152,7 +156,7 @@ func (s *LimitersTestSuite) TestTokenBucketFakeClock() {
 
 				miss := 0
 
-				for i := int64(0); i < testCase.requestCount; i++ {
+				for i := range testCase.requestCount {
 					// No pause for the first request.
 					if i > 0 {
 						clock.Sleep(testCase.requestRate)
@@ -382,6 +386,26 @@ func (s *LimitersTestSuite) TestTokenBucketTTLExpiration() {
 	}
 }
 
+// TestTokenBucketMemcachedLongTTL verifies that a TTL reaching beyond the year 2038 doesn't make Memcached drop the state.
+func (s *LimitersTestSuite) TestTokenBucketMemcachedLongTTL() {
+	ttl := 100 * 365 * 24 * time.Hour
+
+	for name, raceCheck := range map[string]bool{"NoRaceCheck": false, "WithRaceCheck": true} {
+		s.Run(name, func() {
+			backend := l.NewTokenBucketMemcached(s.memcacheClient, uuid.New().String(), ttl, raceCheck)
+			bucket := l.NewTokenBucket(1, time.Minute, l.NewLockNoop(), backend, l.NewSystemClock(), s.logger)
+			ctx := context.Background()
+
+			_, err := bucket.Limit(ctx)
+			s.Require().NoError(err)
+
+			state, err := backend.State(ctx)
+			s.Require().NoError(err)
+			s.NotEqual(int64(0), state.Last, "State should not expire immediately")
+		})
+	}
+}
+
 func BenchmarkTokenBuckets(b *testing.B) {
 	s := new(LimitersTestSuite)
 	s.SetT(&testing.T{})
@@ -394,7 +418,7 @@ func BenchmarkTokenBuckets(b *testing.B) {
 	buckets := s.tokenBuckets(capacity, rate, 0, clock)
 	for name, bucket := range buckets {
 		b.Run(name, func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
+			for range b.N {
 				_, err := bucket.Limit(context.TODO())
 				s.Require().NoError(err)
 			}

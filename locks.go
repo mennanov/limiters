@@ -170,12 +170,17 @@ type LockMemcached struct {
 	backoff   backoff.BackOff
 }
 
+const (
+	memcachedLockRetryInterval = 100 * time.Millisecond
+	memcachedLockMaxRetries    = 100
+)
+
 // NewLockMemcached creates a new instance of LockMemcached.
 // Default backoff is to retry every 100ms for 100 times (10 seconds).
 func NewLockMemcached(client *memcache.Client, mutexName string) *LockMemcached {
 	adapter := gomemcache.New(client)
 	locker := lock.New(adapter, mutexName, "")
-	b := backoff.WithMaxRetries(backoff.NewConstantBackOff(100*time.Millisecond), 100)
+	b := backoff.WithMaxRetries(backoff.NewConstantBackOff(memcachedLockRetryInterval), memcachedLockMaxRetries)
 
 	return &LockMemcached{
 		locker:    locker,

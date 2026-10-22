@@ -99,18 +99,18 @@ func populateTableTTL(data DynamoDBTableProperties, ttl *types.TimeToLiveDescrip
 	return data
 }
 
-func dynamoDBputItem(ctx context.Context, client *dynamodb.Client, input *dynamodb.PutItemInput) (*dynamodb.PutItemOutput, error) {
-	resp, err := client.PutItem(ctx, input)
+func dynamoDBputItem(ctx context.Context, client *dynamodb.Client, input *dynamodb.PutItemInput) error {
+	_, err := client.PutItem(ctx, input)
 	if err != nil {
 		var cErr *types.ConditionalCheckFailedException
 		if errors.As(err, &cErr) {
-			return nil, ErrRaceCondition
+			return ErrRaceCondition
 		}
 
-		return nil, errors.Wrap(err, "unable to set dynamodb item")
+		return errors.Wrap(err, "unable to set dynamodb item")
 	}
 
-	return resp, nil
+	return nil
 }
 
 func dynamoDBGetItem(ctx context.Context, client *dynamodb.Client, input *dynamodb.GetItemInput) (*dynamodb.GetItemOutput, error) {
