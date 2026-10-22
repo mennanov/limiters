@@ -19,7 +19,7 @@ jobs:
       matrix:
         # <block name="go-version" same-as-pattern="\d+\.\d+">
         # Must include the go directive's major.minor from go.mod (checked by go.mod:go-version).
-        go-version: [ '1.25', '1.26' ]
+        go-version: [ '1.26', '1.27' ]
         # </block>
 
     services:
@@ -101,13 +101,13 @@ jobs:
         # Coverage is collected on the oldest supported Go, the go directive in go.mod.
         # <block name="coverage-go-version" same-as="go.mod:go-version" same-as-pattern="\d+\.\d+">
         run: |
-          if [ "${{ matrix.go-version }}" = "1.25" ]; then
+          if [ "${{ matrix.go-version }}" = "1.26" ]; then
             go test -race -coverprofile=coverage.txt -covermode=atomic ./...
           else
             go test -race ./...
           fi
       - uses: codecov/codecov-action@v5
-        if: matrix.go-version == '1.25'
+        if: matrix.go-version == '1.26'
         # </block>
         with:
           verbose: true
