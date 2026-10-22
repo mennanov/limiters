@@ -657,6 +657,7 @@ func (t *TokenBucketRedis) SetState(ctx context.Context, state TokenBucketState)
 			callScript = `redis.call('set', KEYS[1], ARGV[1])`
 		}
 
+		//nolint:dupword // Lua "end end" is not a typo.
 		script := fmt.Sprintf(`
 			local current = redis.call('get', KEYS[1])
 			if current then
