@@ -3,8 +3,10 @@ package limiters
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"math"
+	"strconv"
 	"time"
 )
 
@@ -17,6 +19,8 @@ var (
 
 	// ErrMaxInt64Exceeded is returned when the counter exceeds the maximum integer value.
 	ErrMaxInt64Exceeded = errors.New("counter exceeds max int64")
+
+	errUnexpectedRedisValue = errors.New("unexpected redis value type, expected string")
 )
 
 // Logger wraps the Log method for logging.
@@ -66,4 +70,14 @@ func (c *SystemClock) Sleep(d time.Duration) {
 // clampInt32 converts v to int32, saturating at the int32 bounds instead of wrapping around.
 func clampInt32(v int64) int32 {
 	return int32(min(max(v, math.MinInt32), math.MaxInt32))
+}
+
+// parseRedisInt64 parses an int64 from a string value returned by Redis.
+func parseRedisInt64(v any) (int64, error) {
+	str, ok := v.(string)
+	if !ok {
+		return 0, fmt.Errorf("%w: %T", errUnexpectedRedisValue, v)
+	}
+
+	return strconv.ParseInt(str, 10, 64)
 }

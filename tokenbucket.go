@@ -529,18 +529,18 @@ func (t *TokenBucketRedis) oldState(ctx context.Context) (TokenBucketState, erro
 		return TokenBucketState{}, nil
 	}
 
-	last, err := strconv.ParseInt(values[0].(string), 10, 64)
+	last, err := parseRedisInt64(values[0])
 	if err != nil {
 		return TokenBucketState{}, err
 	}
 
-	available, err := strconv.ParseInt(values[1].(string), 10, 64)
+	available, err := parseRedisInt64(values[1])
 	if err != nil {
 		return TokenBucketState{}, err
 	}
 
 	if t.raceCheck {
-		t.lastVersion, err = strconv.ParseInt(values[2].(string), 10, 64)
+		t.lastVersion, err = parseRedisInt64(values[2])
 		if err != nil {
 			return TokenBucketState{}, err
 		}

@@ -412,13 +412,13 @@ func (t *LeakyBucketRedis) oldState(ctx context.Context) (LeakyBucketState, erro
 		return LeakyBucketState{}, nil
 	}
 
-	last, err := strconv.ParseInt(values[0].(string), 10, 64)
+	last, err := parseRedisInt64(values[0])
 	if err != nil {
 		return LeakyBucketState{}, err
 	}
 
 	if t.raceCheck {
-		t.lastVersion, err = strconv.ParseInt(values[1].(string), 10, 64)
+		t.lastVersion, err = parseRedisInt64(values[1])
 		if err != nil {
 			return LeakyBucketState{}, err
 		}

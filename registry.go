@@ -2,6 +2,7 @@ package limiters
 
 import (
 	"container/heap"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -31,7 +32,12 @@ func (pq *gcPq) Swap(i, j int) {
 
 func (pq *gcPq) Push(x any) {
 	n := len(*pq)
-	item := x.(*pqItem)
+
+	item, ok := x.(*pqItem)
+	if !ok {
+		panic(fmt.Sprintf("gcPq: unexpected item type %T, expected *pqItem", x))
+	}
+
 	item.index = n
 	*pq = append(*pq, item)
 }
