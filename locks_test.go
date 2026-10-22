@@ -20,6 +20,7 @@ func (s *LimitersTestSuite) useLock(lock limiters.DistLocker, shared *int, sleep
 	time.Sleep(sleep)
 	// Check for the race condition.
 	s.Equal(sh, *shared)
+
 	*shared++
 
 	return lock.Unlock(context.Background())
@@ -29,6 +30,7 @@ func (s *LimitersTestSuite) TestDistLockers() {
 	locks1 := s.distLockers(false)
 
 	locks2 := s.distLockers(false)
+
 	for name := range locks1 {
 		s.Run(name, func() {
 			var shared int

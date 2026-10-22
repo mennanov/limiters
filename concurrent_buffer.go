@@ -226,6 +226,7 @@ func (c *ConcurrentBufferMemcached) Add(ctx context.Context, element string) (in
 			var oldNodes []SortedSetNode
 
 			_ = gob.NewDecoder(b).Decode(&oldNodes)
+
 			for _, node := range oldNodes {
 				if node.CreatedAt > now.UnixNano() && node.Value != element {
 					newNodes = append(newNodes, node)
@@ -293,6 +294,7 @@ func (c *ConcurrentBufferMemcached) Remove(ctx context.Context, key string) erro
 	var oldNodes []SortedSetNode
 
 	_ = gob.NewDecoder(bytes.NewBuffer(item.Value)).Decode(&oldNodes)
+
 	for _, node := range oldNodes {
 		if node.CreatedAt > now.UnixNano() && node.Value != key {
 			newNodes = append(newNodes, node)

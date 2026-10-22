@@ -476,6 +476,7 @@ func (t *LeakyBucketRedis) State(ctx context.Context) (LeakyBucketState, error) 
 		}
 
 		state = item.State
+
 		if t.raceCheck {
 			t.lastVersion = item.Version
 		}

@@ -112,6 +112,7 @@ func (t *TokenBucket) takeMinMax(ctx context.Context, minTokens, maxTokens int64
 	tokensToAdd := (now - state.Last) / int64(t.refillRate)
 
 	partialTime := (now - state.Last) % int64(t.refillRate)
+
 	if tokensToAdd > 0 {
 		if tokensToAdd+state.Available < t.capacity {
 			state.Available += tokensToAdd
@@ -599,6 +600,7 @@ func (t *TokenBucketRedis) State(ctx context.Context) (TokenBucketState, error) 
 		}
 
 		state = item.State
+
 		if t.raceCheck {
 			t.lastVersion = item.Version
 		}
