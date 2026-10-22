@@ -27,6 +27,13 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
+const (
+	// Dummy credentials for the local DynamoDB.
+	testAWSDummyValue = "dummy"
+	// Fixed key shared by all the distributed lockers when random keys are not requested.
+	testFixedLockKey = "dist_locker"
+)
+
 type fakeClock struct {
 	mu      sync.Mutex
 	initial time.Time
@@ -121,7 +128,7 @@ func (s *LimitersTestSuite) SetupSuite() {
 		config.WithRegion("us-east-1"),
 		config.WithCredentialsProvider(credentials.StaticCredentialsProvider{
 			Value: aws.Credentials{
-				AccessKeyID: "dummy", SecretAccessKey: "dummy", SessionToken: "dummy",
+				AccessKeyID: testAWSDummyValue, SecretAccessKey: testAWSDummyValue, SessionToken: testAWSDummyValue,
 				Source: "Hard-coded credentials; values are irrelevant for local DynamoDB",
 			},
 		}),
@@ -203,12 +210,12 @@ func (s *LimitersTestSuite) distLockers(generateKeys bool) map[string]l.DistLock
 	pgKey := randomKey
 
 	if !generateKeys {
-		consulKey = "dist_locker"
-		etcdKey = "dist_locker"
-		zkKey = "/dist_locker"
-		redisKey = "dist_locker"
-		memcacheKey = "dist_locker"
-		pgKey = "dist_locker"
+		consulKey = testFixedLockKey
+		etcdKey = testFixedLockKey
+		zkKey = "/" + testFixedLockKey
+		redisKey = testFixedLockKey
+		memcacheKey = testFixedLockKey
+		pgKey = testFixedLockKey
 	}
 
 	consulLock, err := s.consulClient.LockKey(consulKey)
