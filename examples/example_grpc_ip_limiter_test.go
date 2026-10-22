@@ -38,7 +38,7 @@ func Example_ipGRPCLimiter() {
 		DialTimeout: time.Second,
 	})
 	if err != nil {
-		log.Fatalf("could not connect to etcd: %v", err)
+		log.Fatalf("could not connect to etcd: %v", err) //nolint:gocritic // Example code: skipping the deferred cleanups on exit is fine.
 	}
 	defer etcdClient.Close()
 	// Connect to Redis.
