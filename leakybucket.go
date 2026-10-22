@@ -167,6 +167,13 @@ const (
 	etcdKeyLBLast  = "last"
 )
 
+// Bits of the "parsed" mask in LeakyBucketEtcd.State: one for each key that has been read (or is not needed).
+const (
+	etcdLBParsedLast = 1 << iota
+	etcdLBParsedLease
+	etcdLBParsedAll = etcdLBParsedLast | etcdLBParsedLease
+)
+
 // LeakyBucketEtcd is an etcd implementation of a LeakyBucketStateBackend.
 // See the TokenBucketEtcd description for the details on etcd usage.
 type LeakyBucketEtcd struct {
@@ -214,7 +221,7 @@ func (l *LeakyBucketEtcd) State(ctx context.Context) (LeakyBucketState, error) {
 	parsed := 0
 	if l.ttl == 0 {
 		// Ignore lease when there is no expiration
-		parsed |= 2
+		parsed |= etcdLBParsedLease
 	}
 
 	var v int64
@@ -228,7 +235,7 @@ func (l *LeakyBucketEtcd) State(ctx context.Context) (LeakyBucketState, error) {
 			}
 
 			state.Last = v
-			parsed |= 1
+			parsed |= etcdLBParsedLast
 			l.lastVersion = kv.Version
 
 		case etcdKey(l.prefix, etcdKeyLBLease):
@@ -238,11 +245,11 @@ func (l *LeakyBucketEtcd) State(ctx context.Context) (LeakyBucketState, error) {
 			}
 
 			l.leaseID = clientv3.LeaseID(v)
-			parsed |= 2
+			parsed |= etcdLBParsedLease
 		}
 	}
 
-	if parsed != 3 {
+	if parsed != etcdLBParsedAll {
 		return LeakyBucketState{}, errors.New("failed to get state from etcd: some keys are missing")
 	}
 

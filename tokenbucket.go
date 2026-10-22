@@ -216,6 +216,14 @@ const (
 	etcdKeyTBLast      = "last"
 )
 
+// Bits of the "parsed" mask in TokenBucketEtcd.State: one for each key that has been read (or is not needed).
+const (
+	etcdTBParsedAvailable = 1 << iota
+	etcdTBParsedLast
+	etcdTBParsedLease
+	etcdTBParsedAll = etcdTBParsedAvailable | etcdTBParsedLast | etcdTBParsedLease
+)
+
 // TokenBucketEtcd is an etcd implementation of a TokenBucketStateBackend.
 //
 // See https://github.com/etcd-io/etcd/blob/master/Documentation/learning/data_model.md
@@ -296,7 +304,7 @@ func (t *TokenBucketEtcd) State(ctx context.Context) (TokenBucketState, error) {
 	parsed := 0
 	if t.ttl == 0 {
 		// Ignore lease when there is no expiration
-		parsed |= 4
+		parsed |= etcdTBParsedLease
 	}
 
 	var v int64
@@ -310,7 +318,7 @@ func (t *TokenBucketEtcd) State(ctx context.Context) (TokenBucketState, error) {
 			}
 
 			state.Available = v
-			parsed |= 1
+			parsed |= etcdTBParsedAvailable
 
 		case etcdKey(t.prefix, etcdKeyTBLast):
 			v, err = parseEtcdInt64(kv)
@@ -319,7 +327,7 @@ func (t *TokenBucketEtcd) State(ctx context.Context) (TokenBucketState, error) {
 			}
 
 			state.Last = v
-			parsed |= 2
+			parsed |= etcdTBParsedLast
 			t.lastVersion = kv.Version
 
 		case etcdKey(t.prefix, etcdKeyTBLease):
@@ -329,11 +337,11 @@ func (t *TokenBucketEtcd) State(ctx context.Context) (TokenBucketState, error) {
 			}
 
 			t.leaseID = clientv3.LeaseID(v)
-			parsed |= 4
+			parsed |= etcdTBParsedLease
 		}
 	}
 
-	if parsed != 7 {
+	if parsed != etcdTBParsedAll {
 		return TokenBucketState{}, errors.New("failed to get state from etcd: some keys are missing")
 	}
 
