@@ -259,11 +259,11 @@ func (s *LimitersTestSuite) TestLimitContextCancelled() {
 	}
 
 	type rateLimiter interface {
-		Limit(context.Context) (time.Duration, error)
+		Limit(ctx context.Context) (time.Duration, error)
 	}
 
 	type concurrentLimiter interface {
-		Limit(context.Context, string) error
+		Limit(ctx context.Context, key string) error
 	}
 
 	for name, limiter := range limiters {
