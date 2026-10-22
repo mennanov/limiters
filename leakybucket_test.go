@@ -317,6 +317,8 @@ func (s *LimitersTestSuite) TestLeakyBucketMemcachedLongTTL() {
 }
 
 func TestLeakyBucket_ZeroCapacity_ReturnsError(t *testing.T) {
+	t.Parallel()
+
 	capacity := int64(0)
 	rate := time.Hour
 	logger := l.NewStdLogger()

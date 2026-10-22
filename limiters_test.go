@@ -176,6 +176,7 @@ func (s *LimitersTestSuite) TearDownSuite() {
 	s.NoError(DeleteCosmosDBContainer(context.Background(), s.cosmosClient))
 }
 
+//nolint:paralleltest // The suite shares external services and keys, so it must not run in parallel.
 func TestLimitersTestSuite(t *testing.T) {
 	suite.Run(t, new(LimitersTestSuite))
 }
