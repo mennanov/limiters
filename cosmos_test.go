@@ -11,7 +11,7 @@ const (
 	testCosmosContainerName = "limiters-container-test"
 )
 
-var defaultTTL int32 = 86400
+const defaultTTL int32 = 86400
 
 func CreateCosmosDBContainer(ctx context.Context, client *azcosmos.Client) error {
 	resp, err := client.CreateDatabase(ctx, azcosmos.DatabaseProperties{
@@ -26,9 +26,11 @@ func CreateCosmosDBContainer(ctx context.Context, client *azcosmos.Client) error
 		return err
 	}
 
+	ttl := defaultTTL
+
 	_, err = dbClient.CreateContainer(ctx, azcosmos.ContainerProperties{
 		ID:                testCosmosContainerName,
-		DefaultTimeToLive: &defaultTTL,
+		DefaultTimeToLive: &ttl,
 		PartitionKeyDefinition: azcosmos.PartitionKeyDefinition{
 			Paths: []string{`/partitionKey`},
 		},

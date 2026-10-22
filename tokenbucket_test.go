@@ -13,62 +13,66 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-var tokenBucketUniformTestCases = []struct {
+type tokenBucketUniformTestCase struct {
 	capacity     int64
 	refillRate   time.Duration
 	requestCount int64
 	requestRate  time.Duration
 	missExpected int
 	delta        float64
-}{
-	{
-		5,
-		time.Millisecond * 100,
-		10,
-		time.Millisecond * 25,
-		3,
-		1,
-	},
-	{
-		10,
-		time.Millisecond * 100,
-		13,
-		time.Millisecond * 25,
-		0,
-		1,
-	},
-	{
-		10,
-		time.Millisecond * 100,
-		15,
-		time.Millisecond * 33,
-		2,
-		1,
-	},
-	{
-		10,
-		time.Millisecond * 100,
-		16,
-		time.Millisecond * 33,
-		2,
-		1,
-	},
-	{
-		10,
-		time.Millisecond * 10,
-		20,
-		time.Millisecond * 10,
-		0,
-		1,
-	},
-	{
-		1,
-		time.Millisecond * 200,
-		10,
-		time.Millisecond * 100,
-		5,
-		2,
-	},
+}
+
+func tokenBucketUniformTestCases() []tokenBucketUniformTestCase {
+	return []tokenBucketUniformTestCase{
+		{
+			5,
+			time.Millisecond * 100,
+			10,
+			time.Millisecond * 25,
+			3,
+			1,
+		},
+		{
+			10,
+			time.Millisecond * 100,
+			13,
+			time.Millisecond * 25,
+			0,
+			1,
+		},
+		{
+			10,
+			time.Millisecond * 100,
+			15,
+			time.Millisecond * 33,
+			2,
+			1,
+		},
+		{
+			10,
+			time.Millisecond * 100,
+			16,
+			time.Millisecond * 33,
+			2,
+			1,
+		},
+		{
+			10,
+			time.Millisecond * 10,
+			20,
+			time.Millisecond * 10,
+			0,
+			1,
+		},
+		{
+			1,
+			time.Millisecond * 200,
+			10,
+			time.Millisecond * 100,
+			5,
+			2,
+		},
+	}
 }
 
 // tokenBuckets returns all the possible TokenBucket combinations.
@@ -104,7 +108,7 @@ func (s *LimitersTestSuite) tokenBucketBackends(ttl time.Duration) map[string]l.
 
 func (s *LimitersTestSuite) TestTokenBucketRealClock() {
 	clock := l.NewSystemClock()
-	for _, testCase := range tokenBucketUniformTestCases {
+	for _, testCase := range tokenBucketUniformTestCases() {
 		for name, bucket := range s.tokenBuckets(testCase.capacity, testCase.refillRate, 0, clock) {
 			s.Run(name, func() {
 				wg := sync.WaitGroup{}
@@ -144,7 +148,7 @@ func (s *LimitersTestSuite) TestTokenBucketRealClock() {
 }
 
 func (s *LimitersTestSuite) TestTokenBucketFakeClock() {
-	for _, testCase := range tokenBucketUniformTestCases {
+	for _, testCase := range tokenBucketUniformTestCases() {
 		clock := newFakeClock()
 		for name, bucket := range s.tokenBuckets(testCase.capacity, testCase.refillRate, 0, clock) {
 			s.Run(name, func() {

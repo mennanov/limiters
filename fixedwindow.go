@@ -231,7 +231,7 @@ func NewFixedWindowDynamoDB(client *dynamodb.Client, partitionKey string, props 
 
 type contextKey int
 
-var fixedWindowDynamoDBPartitionKey contextKey
+const fixedWindowDynamoDBPartitionKey contextKey = 0
 
 // NewFixedWindowDynamoDBContext creates a context for FixedWindowDynamoDB with a partition key.
 //

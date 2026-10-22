@@ -30,39 +30,43 @@ func (s *LimitersTestSuite) fixedWindowIncrementers() map[string]l.FixedWindowIn
 	}
 }
 
-var fixedWindowTestCases = []struct {
+type fixedWindowTestCase struct {
 	capacity     int64
 	rate         time.Duration
 	requestCount int
 	requestRate  time.Duration
 	missExpected int
-}{
-	{
-		capacity:     2,
-		rate:         time.Millisecond * 100,
-		requestCount: 20,
-		requestRate:  time.Millisecond * 25,
-		missExpected: 10,
-	},
-	{
-		capacity:     4,
-		rate:         time.Millisecond * 100,
-		requestCount: 20,
-		requestRate:  time.Millisecond * 25,
-		missExpected: 0,
-	},
-	{
-		capacity:     2,
-		rate:         time.Millisecond * 100,
-		requestCount: 15,
-		requestRate:  time.Millisecond * 33,
-		missExpected: 5,
-	},
+}
+
+func fixedWindowTestCases() []fixedWindowTestCase {
+	return []fixedWindowTestCase{
+		{
+			capacity:     2,
+			rate:         time.Millisecond * 100,
+			requestCount: 20,
+			requestRate:  time.Millisecond * 25,
+			missExpected: 10,
+		},
+		{
+			capacity:     4,
+			rate:         time.Millisecond * 100,
+			requestCount: 20,
+			requestRate:  time.Millisecond * 25,
+			missExpected: 0,
+		},
+		{
+			capacity:     2,
+			rate:         time.Millisecond * 100,
+			requestCount: 15,
+			requestRate:  time.Millisecond * 33,
+			missExpected: 5,
+		},
+	}
 }
 
 func (s *LimitersTestSuite) TestFixedWindowFakeClock() {
 	clock := newFakeClockWithTime(time.Date(2019, 8, 30, 0, 0, 0, 0, time.UTC))
-	for _, testCase := range fixedWindowTestCases {
+	for _, testCase := range fixedWindowTestCases() {
 		for name, bucket := range s.fixedWindows(testCase.capacity, testCase.rate, clock) {
 			s.Run(name, func() {
 				clock.reset()
