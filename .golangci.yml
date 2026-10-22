@@ -8,7 +8,6 @@ linters:
     - dupword
     - exhaustruct
     - exhaustruct_v5
-    - forcetypeassert
     - funcorder
     - funlen
     - gochecknoglobals
