@@ -10,7 +10,6 @@ linters:
     - funcorder
     - funlen
     - gochecknoglobals
-    - goconst
     - gocritic
     - godox
     - inamedparam
