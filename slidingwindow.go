@@ -159,13 +159,14 @@ func (s *SlidingWindowRedis) Increment(ctx context.Context, prev, curr time.Time
 
 	select {
 	case <-done:
-		if errors.Is(err, redis.TxFailedErr) {
+		switch {
+		case errors.Is(err, redis.TxFailedErr):
 			return 0, 0, errors.Wrap(err, "redis transaction failed")
-		} else if errors.Is(err, redis.Nil) {
+		case errors.Is(err, redis.Nil):
 			prevCount = 0
-		} else if err != nil {
+		case err != nil:
 			return 0, 0, errors.Wrap(err, "unexpected error from redis")
-		} else {
+		default:
 			prevCount, err = strconv.ParseInt(prevCountCmd.Val(), 10, 64)
 			if err != nil {
 				return 0, 0, errors.Wrap(err, "failed to parse response from redis")
