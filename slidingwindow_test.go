@@ -318,7 +318,8 @@ func (s *LimitersTestSuite) TestSlidingWindowOverflowAndWait() {
 func (s *LimitersTestSuite) TestSlidingWindowOverflowAndNoWait() {
 	capacity := int64(3)
 
-	clock := newFakeClock()
+	// A fixed start time keeps the requests clear of a window boundary, which a wall-clock start would hit at random.
+	clock := newFakeClockWithTime(time.Date(2019, 8, 30, 0, 0, 0, 0, time.UTC))
 	for name, bucket := range s.slidingWindows(capacity, time.Second, clock, 1e-9) {
 		s.Run(name, func() {
 			clock.reset()

@@ -38,27 +38,31 @@ type fixedWindowTestCase struct {
 	missExpected int
 }
 
+// fixedWindowTestUnit is the fake clock step. It is large enough that the real-time TTL of the stored windows
+// (at least a second for CosmosDB) can't expire while a test case is running.
+const fixedWindowTestUnit = time.Second * 25
+
 func fixedWindowTestCases() []fixedWindowTestCase {
 	return []fixedWindowTestCase{
 		{
 			capacity:     2,
-			rate:         time.Millisecond * 100,
+			rate:         fixedWindowTestUnit * 4,
 			requestCount: 20,
-			requestRate:  time.Millisecond * 25,
+			requestRate:  fixedWindowTestUnit,
 			missExpected: 10,
 		},
 		{
 			capacity:     4,
-			rate:         time.Millisecond * 100,
+			rate:         fixedWindowTestUnit * 4,
 			requestCount: 20,
-			requestRate:  time.Millisecond * 25,
+			requestRate:  fixedWindowTestUnit,
 			missExpected: 0,
 		},
 		{
 			capacity:     2,
-			rate:         time.Millisecond * 100,
+			rate:         fixedWindowTestUnit * 4,
 			requestCount: 15,
-			requestRate:  time.Millisecond * 33,
+			requestRate:  fixedWindowTestUnit * 33 / 25,
 			missExpected: 5,
 		},
 	}
