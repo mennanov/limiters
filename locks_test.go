@@ -64,7 +64,7 @@ func BenchmarkDistLockers(b *testing.B) {
 	lockers := s.distLockers(false)
 	for name, locker := range lockers {
 		b.Run(name, func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
+			for range b.N {
 				s.Require().NoError(locker.Lock(context.Background()))
 				s.Require().NoError(locker.Unlock(context.Background()))
 			}

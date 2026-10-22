@@ -336,7 +336,7 @@ func BenchmarkLeakyBuckets(b *testing.B) {
 	buckets := s.leakyBuckets(capacity, rate, 0, clock)
 	for name, bucket := range buckets {
 		b.Run(name, func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
+			for range b.N {
 				_, err := bucket.Limit(context.TODO())
 				s.Require().NoError(err)
 			}

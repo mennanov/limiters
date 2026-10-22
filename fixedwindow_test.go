@@ -69,7 +69,7 @@ func (s *LimitersTestSuite) TestFixedWindowFakeClock() {
 
 				miss := 0
 
-				for i := 0; i < testCase.requestCount; i++ {
+				for i := range testCase.requestCount {
 					// No pause for the first request.
 					if i > 0 {
 						clock.Sleep(testCase.requestRate)
@@ -153,7 +153,7 @@ func BenchmarkFixedWindows(b *testing.B) {
 	windows := s.fixedWindows(capacity, rate, clock)
 	for name, window := range windows {
 		b.Run(name, func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
+			for range b.N {
 				_, err := window.Limit(context.TODO())
 				s.Require().NoError(err)
 			}

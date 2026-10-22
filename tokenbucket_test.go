@@ -113,7 +113,7 @@ func (s *LimitersTestSuite) TestTokenBucketRealClock() {
 
 				miss := 0
 
-				for i := int64(0); i < testCase.requestCount; i++ {
+				for i := range testCase.requestCount {
 					// No pause for the first request.
 					if i > 0 {
 						clock.Sleep(testCase.requestRate)
@@ -152,7 +152,7 @@ func (s *LimitersTestSuite) TestTokenBucketFakeClock() {
 
 				miss := 0
 
-				for i := int64(0); i < testCase.requestCount; i++ {
+				for i := range testCase.requestCount {
 					// No pause for the first request.
 					if i > 0 {
 						clock.Sleep(testCase.requestRate)
@@ -414,7 +414,7 @@ func BenchmarkTokenBuckets(b *testing.B) {
 	buckets := s.tokenBuckets(capacity, rate, 0, clock)
 	for name, bucket := range buckets {
 		b.Run(name, func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
+			for range b.N {
 				_, err := bucket.Limit(context.TODO())
 				s.Require().NoError(err)
 			}
