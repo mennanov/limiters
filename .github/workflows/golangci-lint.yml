@@ -24,5 +24,5 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           # <block name="golangci-lint-version" same-as="Makefile:golangci-lint-version" same-as-pattern="\d+\.\d+\.\d+">
-          version: "v2.10.1"
+          version: "v2.15.0"
           # </block>

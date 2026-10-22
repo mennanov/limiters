@@ -16,7 +16,7 @@ benchmark: docker-compose-up
 
 lint:
 # <block name="golangci-lint-version" same-as=".github/workflows/golangci-lint.yml:golangci-lint-version" same-as-pattern="\d+\.\d+\.\d+">
-	@(which golangci-lint && golangci-lint --version | grep 2.10.1) || (curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/v2.10.1/install.sh | sh -s -- -b $(shell go env GOPATH)/bin v2.10.1)
+	@(which golangci-lint && golangci-lint --version | grep 2.15.0) || (curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/v2.15.0/install.sh | sh -s -- -b $(shell go env GOPATH)/bin v2.15.0)
 # </block>
 	golangci-lint run --fix ./...
 
