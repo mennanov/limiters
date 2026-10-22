@@ -435,7 +435,7 @@ func (s *SlidingWindowCosmosDB) Increment(ctx context.Context, prev, curr time.T
 			ID:           id,
 			PartitionKey: s.partitionKey,
 			Count:        1,
-			TTL:          int32(ttl),
+			TTL:          cosmosTTL(ttl),
 		}
 
 		ops := azcosmos.PatchOperations{}

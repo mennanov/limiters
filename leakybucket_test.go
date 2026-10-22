@@ -294,6 +294,26 @@ func (s *LimitersTestSuite) TestLeakyBucketMemcachedExpiryWithRaceCheck() {
 	s.Equal(int64(0), state.Last, "State should be zero after expiry, got: %+v", state)
 }
 
+// TestLeakyBucketMemcachedLongTTL verifies that a TTL reaching beyond the year 2038 doesn't make Memcached drop the state.
+func (s *LimitersTestSuite) TestLeakyBucketMemcachedLongTTL() {
+	ttl := 100 * 365 * 24 * time.Hour
+
+	for name, raceCheck := range map[string]bool{"NoRaceCheck": false, "WithRaceCheck": true} {
+		s.Run(name, func() {
+			backend := l.NewLeakyBucketMemcached(s.memcacheClient, uuid.New().String(), ttl, raceCheck)
+			bucket := l.NewLeakyBucket(1, time.Minute, l.NewLockNoop(), backend, l.NewSystemClock(), s.logger)
+			ctx := context.Background()
+
+			_, err := bucket.Limit(ctx)
+			s.Require().NoError(err)
+
+			state, err := backend.State(ctx)
+			s.Require().NoError(err)
+			s.NotEqual(int64(0), state.Last, "State should not expire immediately")
+		})
+	}
+}
+
 func TestLeakyBucket_ZeroCapacity_ReturnsError(t *testing.T) {
 	capacity := int64(0)
 	rate := time.Hour

@@ -113,6 +113,17 @@ func (s *LimitersTestSuite) TestFixedWindowOverflow() {
 	}
 }
 
+// TestFixedWindowCosmosDBLongTTL verifies that Cosmos DB accepts the TTL of a window that is longer than a few seconds.
+func (s *LimitersTestSuite) TestFixedWindowCosmosDBLongTTL() {
+	clock := newFakeClockWithTime(time.Date(2019, 8, 30, 0, 0, 0, 0, time.UTC))
+	incrementor := l.NewFixedWindowCosmosDB(s.cosmosContainerClient, uuid.New().String())
+	window := l.NewFixedWindow(1, time.Minute, incrementor, clock)
+
+	w, err := window.Limit(context.TODO())
+	s.Require().NoError(err)
+	s.Equal(time.Duration(0), w)
+}
+
 func (s *LimitersTestSuite) TestFixedWindowDynamoDBPartitionKey() {
 	clock := newFakeClockWithTime(time.Date(2019, 8, 30, 0, 0, 0, 0, time.UTC))
 	incrementor := l.NewFixedWindowDynamoDB(s.dynamodbClient, "partitionKey1", s.dynamoDBTableProps)

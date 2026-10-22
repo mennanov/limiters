@@ -382,6 +382,26 @@ func (s *LimitersTestSuite) TestTokenBucketTTLExpiration() {
 	}
 }
 
+// TestTokenBucketMemcachedLongTTL verifies that a TTL reaching beyond the year 2038 doesn't make Memcached drop the state.
+func (s *LimitersTestSuite) TestTokenBucketMemcachedLongTTL() {
+	ttl := 100 * 365 * 24 * time.Hour
+
+	for name, raceCheck := range map[string]bool{"NoRaceCheck": false, "WithRaceCheck": true} {
+		s.Run(name, func() {
+			backend := l.NewTokenBucketMemcached(s.memcacheClient, uuid.New().String(), ttl, raceCheck)
+			bucket := l.NewTokenBucket(1, time.Minute, l.NewLockNoop(), backend, l.NewSystemClock(), s.logger)
+			ctx := context.Background()
+
+			_, err := bucket.Limit(ctx)
+			s.Require().NoError(err)
+
+			state, err := backend.State(ctx)
+			s.Require().NoError(err)
+			s.NotEqual(int64(0), state.Last, "State should not expire immediately")
+		})
+	}
+}
+
 func BenchmarkTokenBuckets(b *testing.B) {
 	s := new(LimitersTestSuite)
 	s.SetT(&testing.T{})

@@ -3,6 +3,7 @@ package limiters
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"net/http"
 	"time"
 
@@ -10,6 +11,12 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/data/azcosmos"
 	"github.com/pkg/errors"
 )
+
+// cosmosTTL converts ttl to the Cosmos DB TTL value: whole seconds rounded up, at least 1 (Cosmos rejects 0 and
+// negative values other than -1) and at most math.MaxInt32.
+func cosmosTTL(ttl time.Duration) int32 {
+	return clampInt32(max(int64(math.Ceil(ttl.Seconds())), 1))
+}
 
 type cosmosItem struct {
 	Count        int64  `json:"Count"`
@@ -42,7 +49,7 @@ func incrementCosmosItemRMW(ctx context.Context, client *azcosmos.ContainerClien
 		}
 
 		existing.Count++
-		existing.TTL = int32(ttl)
+		existing.TTL = cosmosTTL(ttl)
 
 		updated, err := json.Marshal(existing)
 		if err != nil {

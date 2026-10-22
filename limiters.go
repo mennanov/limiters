@@ -4,6 +4,7 @@ package limiters
 import (
 	"errors"
 	"log"
+	"math"
 	"time"
 )
 
@@ -60,4 +61,9 @@ func (c *SystemClock) Now() time.Time {
 // Sleep blocks (sleeps) for the given duration.
 func (c *SystemClock) Sleep(d time.Duration) {
 	time.Sleep(d)
+}
+
+// clampInt32 converts v to int32, saturating at the int32 bounds instead of wrapping around.
+func clampInt32(v int64) int32 {
+	return int32(min(max(v, math.MinInt32), math.MaxInt32))
 }

@@ -673,7 +673,7 @@ func (t *LeakyBucketMemcached) SetState(ctx context.Context, state LeakyBucketSt
 		}
 		if t.ttl > 30*24*time.Hour {
 			// If the value is over 30 days, it treats it as UNIX timestamp.
-			item.Expiration = int32(time.Now().Add(t.ttl).Unix())
+			item.Expiration = clampInt32(time.Now().Add(t.ttl).Unix())
 		} else if t.ttl > 0 {
 			// Memcached supports expiration in seconds. It's more precise way.
 			item.Expiration = int32(math.Ceil(t.ttl.Seconds()))

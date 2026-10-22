@@ -353,6 +353,17 @@ func (s *LimitersTestSuite) TestSlidingWindowOverflowAndNoWait() {
 	}
 }
 
+// TestSlidingWindowCosmosDBLongTTL verifies that Cosmos DB accepts the TTL of a window that is longer than a few seconds.
+func (s *LimitersTestSuite) TestSlidingWindowCosmosDBLongTTL() {
+	clock := newFakeClockWithTime(time.Date(2019, 9, 3, 0, 0, 0, 0, time.UTC))
+	incrementor := l.NewSlidingWindowCosmosDB(s.cosmosContainerClient, uuid.New().String())
+	window := l.NewSlidingWindow(1, time.Minute, incrementor, clock, 1e-9)
+
+	w, err := window.Limit(context.TODO())
+	s.Require().NoError(err)
+	s.Equal(time.Duration(0), w)
+}
+
 func BenchmarkSlidingWindows(b *testing.B) {
 	s := new(LimitersTestSuite)
 	s.SetT(&testing.T{})
