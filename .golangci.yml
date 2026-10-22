@@ -16,7 +16,6 @@ linters:
     - godox
     - gomoddirectives
     - inamedparam
-    - intrange
     - lll
     - mnd
     - musttag
