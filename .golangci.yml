@@ -12,7 +12,6 @@ linters:
     - gochecknoglobals
     - gocritic
     - godox
-    - inamedparam
     - lll
     - mnd
     - musttag
