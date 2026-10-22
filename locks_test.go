@@ -9,8 +9,11 @@ import (
 	"github.com/mennanov/limiters"
 )
 
-func (s *LimitersTestSuite) useLock(lock limiters.DistLocker, shared *int, sleep time.Duration) {
-	s.NoError(lock.Lock(context.TODO()))
+func (s *LimitersTestSuite) useLock(lock limiters.DistLocker, shared *int, sleep time.Duration) error {
+	err := lock.Lock(context.TODO())
+	if err != nil {
+		return err
+	}
 
 	sh := *shared
 	// Imitate heavy work...
@@ -19,7 +22,7 @@ func (s *LimitersTestSuite) useLock(lock limiters.DistLocker, shared *int, sleep
 	s.Equal(sh, *shared)
 	*shared++
 
-	s.NoError(lock.Unlock(context.Background()))
+	return lock.Unlock(context.Background())
 }
 
 func (s *LimitersTestSuite) TestDistLockers() {
@@ -40,12 +43,12 @@ func (s *LimitersTestSuite) TestDistLockers() {
 				go func(k string) {
 					defer wg.Done()
 
-					s.useLock(locks1[k], &shared, sleep)
+					s.NoError(s.useLock(locks1[k], &shared, sleep))
 				}(name)
 				go func(k string) {
 					defer wg.Done()
 
-					s.useLock(locks2[k], &shared, sleep)
+					s.NoError(s.useLock(locks2[k], &shared, sleep))
 				}(name)
 
 				wg.Wait()

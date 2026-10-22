@@ -70,7 +70,9 @@ func (s *LimitersTestSuite) TestLeakyBucketRealClock() {
 						defer wg.Done()
 
 						wait, err := bucket.Limit(context.TODO())
-						s.Require().NoError(err)
+						if !s.NoError(err) {
+							return
+						}
 
 						if wait > 0 {
 							mu.Lock()

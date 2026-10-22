@@ -160,13 +160,13 @@ func (s *LimitersTestSuite) SetupSuite() {
 }
 
 func (s *LimitersTestSuite) TearDownSuite() {
-	s.Assert().NoError(s.etcdClient.Close())
-	s.Assert().NoError(s.redisClient.Close())
-	s.Assert().NoError(s.redisClusterClient.Close())
-	s.Assert().NoError(DeleteTestDynamoDBTable(context.Background(), s.dynamodbClient))
-	s.Assert().NoError(s.memcacheClient.Close())
-	s.Assert().NoError(s.pgDb.Close())
-	s.Assert().NoError(DeleteCosmosDBContainer(context.Background(), s.cosmosClient))
+	s.NoError(s.etcdClient.Close())
+	s.NoError(s.redisClient.Close())
+	s.NoError(s.redisClusterClient.Close())
+	s.NoError(DeleteTestDynamoDBTable(context.Background(), s.dynamodbClient))
+	s.NoError(s.memcacheClient.Close())
+	s.NoError(s.pgDb.Close())
+	s.NoError(DeleteCosmosDBContainer(context.Background(), s.cosmosClient))
 }
 
 func TestLimitersTestSuite(t *testing.T) {
