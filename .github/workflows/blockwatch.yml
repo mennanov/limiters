@@ -8,14 +8,13 @@ on:
     branches:
       - master
 
+permissions:
+  contents: read
+
 jobs:
-  staticcheck:
+  blockwatch:
     name: Blockwatch
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
-      - uses: actions/checkout@v6
-        with:
-            fetch-depth: 2 # Required to diff against the base branch
+      # The action checks out the repository itself and diffs against the PR base or the previous push.
       - uses: mennanov/blockwatch-action@v1

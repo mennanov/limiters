@@ -1,12 +1,11 @@
 repos:
-  - repo: local
+  # Installs a prebuilt blockwatch from PyPI; no local install needed.
+  - repo: https://github.com/mennanov/blockwatch
+    rev: v0.15.0
     hooks:
       - id: blockwatch
-        name: blockwatch
-        entry: bash -c 'git diff --patch --cached --unified=0 | blockwatch'
-        language: system
-        stages: [ pre-commit ]
-        pass_filenames: false
+  - repo: local
+    hooks:
       - id: golangci-lint
         name: golangci-lint
         entry: golangci-lint run

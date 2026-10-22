@@ -1,5 +1,6 @@
 services:
-  # <block name="testing-services" affects=".github/workflows/tests.yml:testing-services">
+  # The images CI runs (.github/workflows/tests.yml:testing-services) must match the ones here.
+  # <block name="testing-services" same-as-pattern="image: \S+">
   etcd:
     image: gcr.io/etcd-development/etcd:v3.6.5
     environment:

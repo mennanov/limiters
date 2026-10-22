@@ -45,6 +45,8 @@ func Example_simpleGRPCLimiter() {
 	})
 	defer redisClient.Close()
 
+	// The gRPC example in README.md is a copy of this block (checked by README.md:grpc-simple-example).
+	// <block name="grpc-simple-example" same-as-pattern=".+">
 	rate := time.Second * 3
 	limiter := limiters.NewTokenBucket(
 		2,
@@ -72,6 +74,7 @@ func Example_simpleGRPCLimiter() {
 
 			return handler(ctx, req)
 		}))
+	// </block>
 
 	pb.RegisterGreeterServer(s, &examples.Server{})
 

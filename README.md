@@ -9,46 +9,56 @@ Any types of back-ends and locks can be used that implement certain minimalistic
 Most common implementations are already provided.  
 
 - [`Token bucket`](https://en.wikipedia.org/wiki/Token_bucket)
+    <!-- Each backend list below must match the constructors in its Go file: "cosmos db" == NewTokenBucketCosmosDB. -->
+    <!-- <block name="token-bucket-backends" same-as="tokenbucket.go" same-as-pattern="^(?:- |func NewTokenBucket)(?P<value>[\w -]+)" same-as-format="flat"> -->
     - in-memory (local)
     - redis
     - memcached
     - etcd
     - dynamodb
     - cosmos db
+    <!-- </block> -->
 
     Allows requests at a certain input rate with possible bursts configured by the capacity parameter.  
     The output rate equals to the input rate.  
     Precise (no over or under-limiting), but requires a lock (provided).
 
 - [`Leaky bucket`](https://en.wikipedia.org/wiki/Leaky_bucket#As_a_queue)
+    <!-- <block name="leaky-bucket-backends" same-as="leakybucket.go" same-as-pattern="^(?:- |func NewLeakyBucket)(?P<value>[\w -]+)" same-as-format="flat"> -->
     - in-memory (local)
     - redis
     - memcached
     - etcd
     - dynamodb
     - cosmos db
+    <!-- </block> -->
 
     Puts requests in a FIFO queue to be processed at a constant rate.  
     There are no restrictions on the input rate except for the capacity of the queue.  
     Requires a lock (provided).
 
 - [`Fixed window counter`](https://konghq.com/blog/how-to-design-a-scalable-rate-limiting-algorithm/)
+    <!-- Skips the deprecated NewFixedWindowDynamoDBContext, which returns a context, not a *FixedWindow. -->
+    <!-- <block name="fixed-window-backends" same-as="fixedwindow.go" same-as-pattern="^(?:- |func NewFixedWindow)(?P<value>[\w -]+)(?: |$|\(.*\*FixedWindow)" same-as-format="flat"> -->
     - in-memory (local)
     - redis
     - memcached
     - dynamodb
     - cosmos db
+    <!-- </block> -->
 
     Simple and resources efficient algorithm that does not need a lock.  
     Precision may be adjusted by the size of the window.  
     May be lenient when there are many requests around the boundary between 2 adjacent windows.
 
 - [`Sliding window counter`](https://konghq.com/blog/how-to-design-a-scalable-rate-limiting-algorithm/)
+    <!-- <block name="sliding-window-backends" same-as="slidingwindow.go" same-as-pattern="^(?:- |func NewSlidingWindow)(?P<value>[\w -]+)" same-as-format="flat"> -->
     - in-memory (local)
     - redis
     - memcached
     - dynamodb
     - cosmos db
+    <!-- </block> -->
 
     Smoothes out the bursts around the boundary between 2 adjacent windows.  
     Needs as twice more memory as the `Fixed Window` algorithm (2 windows instead of 1 at a time).  
@@ -56,23 +66,25 @@ Most common implementations are already provided.
     It's the client's responsibility to handle a disallowed request properly: wait before making a new one again.
 
 - `Concurrent buffer`
+    <!-- <block name="concurrent-buffer-backends" same-as="concurrent_buffer.go" same-as-pattern="^(?:- |func NewConcurrentBuffer)(?P<value>[\w -]+)" same-as-format="flat"> -->
     - in-memory (local)
     - redis
     - memcached
+    <!-- </block> -->
     
     Allows concurrent requests up to the given capacity.  
     Requires a lock (provided).
 
 ## gRPC example
 
-Global token bucket rate limiter for a gRPC service example:
+Global token bucket rate limiter for a gRPC service example ([source](examples/example_grpc_simple_limiter_test.go)):
+<!-- <block name="grpc-simple-example" same-as="examples/example_grpc_simple_limiter_test.go:grpc-simple-example" same-as-mode="sequence" same-as-pattern="^[^`].*"> -->
 ```go
-// examples/example_grpc_simple_limiter_test.go
 rate := time.Second * 3
 limiter := limiters.NewTokenBucket(
     2,
     rate,
-    limiters.NewLockerEtcd(etcdClient, "/ratelimiter_lock/simple/", limiters.NewStdLogger()),
+    limiters.NewLockEtcd(etcdClient, "/ratelimiter_lock/simple/", limiters.NewStdLogger()),
     limiters.NewTokenBucketRedis(
         redisClient,
         "ratelimiter/simple",
@@ -82,9 +94,9 @@ limiter := limiters.NewTokenBucket(
 
 // Add a unary interceptor middleware to rate limit all requests.
 s := grpc.NewServer(grpc.UnaryInterceptor(
-    func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
+    func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
         w, err := limiter.Limit(ctx)
-        if err == limiters.ErrLimitExhausted {
+        if errors.Is(err, limiters.ErrLimitExhausted) {
             return nil, status.Errorf(codes.ResourceExhausted, "try again later in %s", w)
         } else if err != nil {
             // The limiter failed. This error should be logged and examined.
@@ -94,6 +106,7 @@ s := grpc.NewServer(grpc.UnaryInterceptor(
         return handler(ctx, req)
     }))
 ```
+<!-- </block> -->
 
 For something close to a real world example see the IP address based gRPC global rate limiter in the 
 [examples](examples/example_grpc_ip_limiter_test.go) directory.
@@ -135,12 +148,15 @@ In case there is only 1 running application instance then no distributed lock is
 as all the algorithms are thread-safe (use `LockNoop`).
 
 Supported backends:
+<!-- Must match the NewLock* constructors in locks.go. Skips NewLockNoop (no arguments), described above. -->
+<!-- <block name="lock-backends" same-as="locks.go" same-as-pattern="^(?:- \[|func NewLock)(?P<value>\w+)(?:\]|\(\w)" same-as-format="flat"> -->
 - [etcd](https://etcd.io/)
 - [Consul](https://www.consul.io/)
 - [Zookeeper](https://zookeeper.apache.org/)
 - [Redis](https://redis.io/)
 - [Memcached](https://memcached.org/)
 - [PostgreSQL](https://www.postgresql.org/)
+<!-- </block> -->
 
 ## Memcached
 

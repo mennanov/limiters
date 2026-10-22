@@ -1,6 +1,8 @@
 module github.com/mennanov/limiters
 
-// <block name="go-version" affects=".github/workflows/tests.yml:go-version, .github/workflows/vet.yml:go-version, go.mod:consul-pin, .github/dependabot.yaml:consul-pin-ignore">
+// The major.minor here is the oldest supported Go: CI must test it and the consul pin note below must name it.
+// Patch bumps (e.g. from Dependabot) need no other change.
+// <block name="go-version" same-as=".github/workflows/tests.yml:go-version, :consul-pin" same-as-mode="subset" same-as-pattern="\d+\.\d+">
 go 1.25.9
 
 // </block>
@@ -18,11 +20,12 @@ require (
 	github.com/cenkalti/backoff/v3 v3.2.2
 	github.com/go-redsync/redsync/v4 v4.16.0
 	github.com/google/uuid v1.6.0
-	// <block name="consul-pin" affects=".github/dependabot.yaml:consul-pin-ignore">
+	// <block name="consul-pin" affects=".github/dependabot.yaml:consul-pin-ignore" same-as-pattern="builds on Go (?P<value>\d+\.\d+)">
 	// Pinned: consul/api >= v1.34.2 raises its own go directive to 1.26, which
 	// would force this library's minimum Go version up to 1.26. v1.34.1 is the
 	// newest release that still builds on Go 1.25. Unpin (and drop the matching
-	// dependabot ignore) when the go-version block above moves to 1.26. See #189.
+	// dependabot ignore) when the go-version block above moves to 1.26, then
+	// remove this block and the ":consul-pin" target of go-version. See #189.
 	github.com/hashicorp/consul/api v1.34.1
 	// </block>
 	github.com/lib/pq v1.12.3

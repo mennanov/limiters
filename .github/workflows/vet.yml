@@ -16,10 +16,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Setup Go 1.26
+      - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          # <block name="go-version">
+          # <block name="go-version" same-as=".github/workflows/tests.yml:go-version" same-as-mode="subset" same-as-pattern="\d+\.\d+">
           # Newest supported Go; the go directive in go.mod sets the floor.
           go-version: '1.26'
           # </block>

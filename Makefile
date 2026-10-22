@@ -1,4 +1,5 @@
-# <block name="test-env-vars" affects=".github/workflows/tests.yml:test-env-vars">
+# The same variables as the "Run tests" step env in .github/workflows/tests.yml; their values may differ.
+# <block name="test-env-vars" same-as=".github/workflows/tests.yml:test-env-vars" same-as-pattern="(?P<value>[A-Z_]+)=">
 SERVICES = ETCD_ENDPOINTS="127.0.0.1:2379" REDIS_ADDR="127.0.0.1:6379" REDIS_NODES="127.0.0.1:11000,127.0.0.1:11001,127.0.0.1:11002,127.0.0.1:11003,127.0.0.1:11004,127.0.0.1:11005" ZOOKEEPER_ENDPOINTS="127.0.0.1" CONSUL_ADDR="127.0.0.1:8500" AWS_ADDR="127.0.0.1:8000" MEMCACHED_ADDR="127.0.0.1:11211" POSTGRES_URL="postgres://postgres:postgres@localhost:5432/?sslmode=disable" COSMOS_ADDR="127.0.0.1:8081"
 # </block>
 
@@ -14,7 +15,7 @@ benchmark: docker-compose-up
 	@$(SERVICES) go test -race -run=nonexistent -bench=.
 
 lint:
-# <block name="golangci-lint-version" affects=".github/workflows/golangci-lint.yml:golangci-lint-version">
+# <block name="golangci-lint-version" same-as=".github/workflows/golangci-lint.yml:golangci-lint-version" same-as-pattern="\d+\.\d+\.\d+">
 	@(which golangci-lint && golangci-lint --version | grep 2.10.1) || (curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/v2.10.1/install.sh | sh -s -- -b $(shell go env GOPATH)/bin v2.10.1)
 # </block>
 	golangci-lint run --fix ./...

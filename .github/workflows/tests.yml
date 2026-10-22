@@ -17,13 +17,14 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        # <block name="go-version" affects="go.mod:go-version">
-        # The lowest entry must cover the go directive in go.mod (currently 1.25.x).
+        # <block name="go-version" same-as-pattern="\d+\.\d+">
+        # Must include the go directive's major.minor from go.mod (checked by go.mod:go-version).
         go-version: [ '1.25', '1.26' ]
         # </block>
 
     services:
-      # <block name="testing-services" affects="docker-compose.yml:testing-services">
+      # Every image here must also be in docker-compose.yml (which additionally runs dynamodb-local).
+      # <block name="testing-services" same-as="docker-compose.yml:testing-services" same-as-mode="subset" same-as-pattern="image: \S+">
       etcd:
         image: gcr.io/etcd-development/etcd:v3.6.5
         env:
@@ -84,7 +85,8 @@ jobs:
         with:
           port: 8000
       - name: Run tests
-        # <block name="test-env-vars" affects="Makefile:test-env-vars">
+        # The same variables as SERVICES in the Makefile; their values may differ.
+        # <block name="test-env-vars" same-as="Makefile:test-env-vars" same-as-pattern="(?P<value>[A-Z_]+):">
         env:
           ETCD_ENDPOINTS: 'localhost:2379'
           REDIS_ADDR: 'localhost:6379'
@@ -96,6 +98,8 @@ jobs:
           POSTGRES_URL: postgres://postgres:postgres@localhost:5432/?sslmode=disable
           COSMOS_ADDR: '127.0.0.1:8081'
         # </block>
+        # Coverage is collected on the oldest supported Go, the go directive in go.mod.
+        # <block name="coverage-go-version" same-as="go.mod:go-version" same-as-pattern="\d+\.\d+">
         run: |
           if [ "${{ matrix.go-version }}" = "1.25" ]; then
             go test -race -coverprofile=coverage.txt -covermode=atomic ./...
@@ -104,6 +108,7 @@ jobs:
           fi
       - uses: codecov/codecov-action@v5
         if: matrix.go-version == '1.25'
+        # </block>
         with:
           verbose: true
 
