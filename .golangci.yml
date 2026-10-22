@@ -5,7 +5,6 @@ linters:
     - cyclop
     - depguard
     - dupl
-    - dupword
     - exhaustruct
     - exhaustruct_v5
     - funcorder
