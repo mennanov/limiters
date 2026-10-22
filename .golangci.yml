@@ -12,7 +12,6 @@ linters:
     - godox
     - lll
     - musttag
-    - paralleltest
     - perfsprint
     - revive
     - varnamelen
