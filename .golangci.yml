@@ -19,7 +19,6 @@ linters:
     - revive
     - varnamelen
     - wrapcheck
-    - wsl
   exclusions:
     generated: lax
     presets:
